@@ -118,7 +118,7 @@ static function GetNews()
             "q" => "tecnologia";
            ,"sortBy" => "popularity";
            ,"language" => "pt";
-           ,"from" => hb_DToC(Date(),"yyyy-mm-dd");
+           ,"from" => hb_DToC(Date()-1,"yyyy-mm-dd");
            ,"to" => hb_DToC(Date(),"yyyy-mm-dd");
            ,"apiKey" => cNewsApiKey;
         };
@@ -269,7 +269,8 @@ static function PublishToBlogger(cTitle as character,cContent as character)
     if (!Empty(cAccessToken))
 
         // Constrói a URL do endpoint de inserção de posts do Blogger
-        cURL:="https://www.googleapis.com/blogger/v3/blogs/"+cBloggerID+"/posts/"
+        //https://developers.google.com/blogger/docs/3.0/reference/posts?hl=pt-br#resource
+        cURL:="https://www.googleapis.com/blogger/v3/blogs/"+cBloggerID+"/posts?isDraft=true"
 
         // Prepara o corpo JSON da requisição conforme a documentação do Blogger API v3
         hJSONData:={;
@@ -279,6 +280,7 @@ static function PublishToBlogger(cTitle as character,cContent as character)
                         };
                        ,"title" => cTitle;
                        ,"content" => cContent;
+                       ,"labels" => "#BlackTDN NEWS";
         }
 
         // Cria o objeto TIPClientHTTP para a URL do Blogger
@@ -450,14 +452,12 @@ static function ExchangeCodeForToken(cAuthCode as character)
                 hb_MemoWrit("hb_blogger_post.token",cAccessToken)
                 hb_MemoWrit(".uhttpd.stop","")
             endif
-            ? hb_ValToExp(oHTTP:hHeaders)
+            QOut(hb_ValToExp(oHTTP:hHeaders))
         else
             QOut( "Error:", "oHTTP:Post()", oHTTP:LastErrorMessage() )
-            ? "Error:", "oHTTP:Post()", oHTTP:LastErrorMessage()
         endif
         oHTTP:Close()
     else
-        ? "Error:", "oHTTP:Open()", oHTTP:LastErrorMessage()
         QOut( "Error:", "oHTTP:Open()", oHTTP:LastErrorMessage() )
     endif
 
