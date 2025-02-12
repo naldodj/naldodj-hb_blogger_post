@@ -11,7 +11,7 @@
 
 REQUEST HB_CODEPAGE_UTF8EX
 
-#if ! defined( __HBSCRIPT__HBSHELL )
+#if ! defined(__HBSCRIPT__HBSHELL)
     REQUEST __HBEXTERN__HBSSL__
 #endif
 
@@ -35,7 +35,7 @@ static cScope as character
 
 static cEOL as character
 
-MEMVAR server, get, post, cookie, session
+MEMVAR server,get,post,cookie,session
 
 //---------------------------------------------------------------------
 // Função: Main()
@@ -118,11 +118,11 @@ static function GetNews()
             "q" => "tecnologia";
            ,"sortBy" => "popularity";
            ,"language" => "pt";
-           ,"from" => hb_DToC(Date()-1,"yyyy-mm-dd");
+           ,"from" => hb_DToC(Date(),"yyyy-mm-dd");
            ,"to" => hb_DToC(Date(),"yyyy-mm-dd");
            ,"apiKey" => cNewsApiKey;
         };
-    )
+   )
 
     /* Connect to the HTTP server */
     oHTTP:nConnTimeout:=2000 /* 20000 */
@@ -147,7 +147,7 @@ static function GetNews()
 
 //---------------------------------------------------------------------
 // Função: JSONToMarkdown(cJSON)
-// Gera um texto em Markdown formatado com título, descrição e link para cada notícia.
+// Gera um texto em Markdown formatado com título,descrição e link para cada notícia.
 //---------------------------------------------------------------------
 static function JSONToMarkdown(cJSON as character)
 
@@ -161,11 +161,15 @@ static function JSONToMarkdown(cJSON as character)
 
     local i as numeric
 
-    hb_MemoWrit("C:\tmp\news.json",cJSON)
-
-    hb_JSONDecode(cJSON,@hJSON)
-
     begin sequence
+
+        if (empty(cJSON))
+            break
+        endif
+
+        hb_MemoWrit("JSONToMarkdownNews.json",cJSON)
+        
+        hb_JSONDecode(cJSON,@hJSON)
 
         if (!hb_HHasKey(hJSON,"status"))
             break
@@ -226,7 +230,7 @@ static function JSONToMarkdown(cJSON as character)
     return(cMarkdown) as character
 
 //---------------------------------------------------------------------
-// Função: ConvertMarkdownToHtml( cMarkdown )
+// Função: ConvertMarkdownToHtml(cMarkdown)
 //---------------------------------------------------------------------
 static function ConvertMarkdownToHtml(cMarkdown as character)
    local cNewMarkDown as character
@@ -238,7 +242,7 @@ static function ConvertMarkdownToHtml(cMarkdown as character)
    return(cNewMarkDown) as character
 
 //---------------------------------------------------------------------
-// Função: PublishToBlogger( cTitle, cContent )
+// Função: PublishToBlogger(cTitle,cContent)
 // Publica o post no Blogger via API REST usando TIPClientHTTP.
 //---------------------------------------------------------------------
 static function PublishToBlogger(cTitle as character,cContent as character)
@@ -299,11 +303,11 @@ static function PublishToBlogger(cTitle as character,cContent as character)
                 ? cResponse:=oHTTP:cReply
                 ? hb_ValToExp(oHTTP:hHeaders)
             else
-                ? "Error:", "oHTTP:Post()", oHTTP:LastErrorMessage()
+                ? "Error:","oHTTP:Post()",oHTTP:LastErrorMessage()
             endif
             oHTTP:Close()
         else
-            ? "Error:", "oHTTP:Open()", oHTTP:LastErrorMessage()
+            ? "Error:","oHTTP:Open()",oHTTP:LastErrorMessage()
         endif
 
     endif
@@ -338,9 +342,9 @@ static function GetOAuth2Token()
     lHTTPServer:=oHTTPServer:Run(;
         {;
              "FirewallFilter"   => "";
-            ,"LogAccess"        => {| m | oLogAccess:Add( m+cEOL ) };
-            ,"LogError"         => {| m | oLogError:Add( m+cEOL ) };
-            ,"Trace"            => {| ... | QOut( ... ) };
+            ,"LogAccess"        => {| m | oLogAccess:Add(m+cEOL) };
+            ,"LogError"         => {| m | oLogError:Add(m+cEOL) };
+            ,"Trace"            => {| ... | QOut(...) };
             ,"Port"             => 8002;
             ,"Idle"             => {|o|iif(hb_FileExists(".uhttpd.stop"),(fErase(".uhttpd.stop"),o:Stop()),NIL)};
             ,"SSL"              => .F.;
@@ -351,7 +355,7 @@ static function GetOAuth2Token()
                 ,"/"               => {||URedirect("/auth")};
             };
         };
-    )
+   )
 
     oLogError:Close()
     oLogAccess:Close()
@@ -420,7 +424,7 @@ return({"AccessToken"=>cAccessToken})
 
 static function ExchangeCodeForToken(cAuthCode as character)
 
-    local cTokenResponse, cAccessToken
+    local cTokenResponse,cAccessToken
 
     local hkeys,hJSONResponse as hash
 
@@ -444,21 +448,20 @@ static function ExchangeCodeForToken(cAuthCode as character)
     if (oHTTP:Open())
         if (oHTTP:Post(hkeys))
             cTokenResponse:=oHTTP:ReadAll()
-            QOut( "cTokenResponse", cTokenResponse )
+            QOut("cTokenResponse",cTokenResponse)
             hb_JSONDecode(cTokenResponse,@hJSONResponse)
             if (hb_HHasKey(hJSONResponse,"access_token"))
                 cAccessToken:=hJSONResponse["access_token"]
-                QOut( "cAccessToken", cAccessToken )
+                QOut("cAccessToken",cAccessToken)
                 hb_MemoWrit("hb_blogger_post.token",cAccessToken)
-                hb_MemoWrit(".uhttpd.stop","")
             endif
             QOut(hb_ValToExp(oHTTP:hHeaders))
         else
-            QOut( "Error:", "oHTTP:Post()", oHTTP:LastErrorMessage() )
+            QOut("Error:","oHTTP:Post()",oHTTP:LastErrorMessage())
         endif
         oHTTP:Close()
     else
-        QOut( "Error:", "oHTTP:Open()", oHTTP:LastErrorMessage() )
+        QOut("Error:","oHTTP:Open()",oHTTP:LastErrorMessage())
     endif
 
 return(cAccessToken)
