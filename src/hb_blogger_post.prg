@@ -163,11 +163,11 @@ static function JSONToMarkdown(cJSON as character)
 
     begin sequence
 
+        hb_MemoWrit("JSONToMarkdownNews.json",cJSON)
+
         if (empty(cJSON))
             break
         endif
-
-        hb_MemoWrit("JSONToMarkdownNews.json",cJSON)
         
         hb_JSONDecode(cJSON,@hJSON)
 
