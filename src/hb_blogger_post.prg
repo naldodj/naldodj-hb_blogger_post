@@ -637,7 +637,6 @@ METHOD New(cKey as character,cModel as character) CLASS TDeepSeek
 //----------------------------------------------------------------------------//
 METHOD End() CLASS TDeepSeek
     curl_easy_cleanup(::phCurl)
-    ::phCurl:=nil
     return(nil)
 //----------------------------------------------------------------------------//
 METHOD GetValue(cHKey as character) CLASS TDeepSeek
@@ -755,7 +754,6 @@ METHOD GetUserBalance() CLASS TDeepSeek
     endif
 
     curl_easy_cleanup(phCurl)
-    phCurl:=nil
 
     return ::cResponse
 
