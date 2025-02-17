@@ -161,13 +161,20 @@ procedure Main(...)
 //---------------------------------------------------------------------
 static function GetNews(lSanitizeData as logical,cFrom as character,cTo as character)
 
+    local aNewsTech as array
+    
     local cURL as character
     local cPrompt as character
     local cResponse as character
+    local cJSONArticle as character
     local cReponseUserBalance as character
 
-    local hNews as hash
+    local hNews,hArticle as hash
     local hReponseUserBalance as hash
+    
+    local lNewsTech as logical
+
+    local nArticle as numeric
 
     local oURL as object
     local oHTTP as object
@@ -235,18 +242,37 @@ static function GetNews(lSanitizeData as logical,cFrom as character,cTo as chara
             endif
             cReponseUserBalance:=oTDeepSeek:GetUserBalance()
             hb_JSONDecode(cReponseUserBalance,@hReponseUserBalance)
-            #pragma __cstream|cPrompt:=%s
-Given the JSON containing news articles in Portuguese, filter out all articles unrelated to technology. Use the titles to identify technology-related content, such as topics on computing, software, devices, or modern technologies. Return a new JSON containing only technology-related articles. The returned JSON must maintain exactly the same structure and include all original properties from the input JSON, even if they are empty or null. Ensure the output is a valid JSON file with properly formatted URLs and dates. Respond only with the filtered JSON in the requested format.:
-            #pragma __endtext
-            cPrompt+=" ```json"+hb_JSONEncode(hNews)+"```"
             if (!((valType(hReponseUserBalance)=="H").and.(hb_HHasKey(hReponseUserBalance,"is_available")).and.(hReponseUserBalance["is_available"])))
                 oTDeepSeek:cUrl:="http://localhost:1234/v1/chat/completions"
                 oTDeepSeek:cModel:="deepseek-r1-distill-qwen-7b"
             endif
-            oTDeepSeek:Send(cPrompt)
-            cResponse:=oTDeepSeek:GetValue()
+            aNewsTech:=Array(0)
+            for each hArticle in hNews["articles"]
+                nArticle:=hArticle:__enumIndex()
+                hb_HSet(hArticle,"sourceIndex",nArticle)                
+                #pragma __cstream|cPrompt:=%s
+Given individual JSON objects representing news articles in Portuguese, determine if each article is related to technology. Use the title to identify technology-related content, such as topics on computing, software, devices, or modern technologies. For each article, respond only with true if it is related to technology or false if it is not. Maintain the same evaluation criteria for all responses.:
+                #pragma __endtext
+                cJSONArticle:=hb_JSONEncode(hArticle)
+                cPrompt+=" ```json"+cJSONArticle+"```"
+                oTDeepSeek:Send(cPrompt)
+                cResponse:=oTDeepSeek:GetValue()
+                cResponse:=allTrim(subStr(cResponse,AT("</think>",cResponse)+8))
+                if ("true"$cResponse)
+                    aAdd(aNewsTech,hArticle)
+                endif
+            end each
+            lNewsTech:=(!Empty(aNewsTech))
+            if (lNewsTech)
+                hNews["totalResults"]:=Len(aNewsTech)
+                hNews["articles"]:=aNewsTech
+            endif
         end sequence
         oTDeepSeek:End()
+        hb_default(@lNewsTech,.F.)
+        if (lNewsTech)
+            cResponse:=hb_JSONEncode(hNews)
+        endif
     endif
 
     return(cResponse) as character
