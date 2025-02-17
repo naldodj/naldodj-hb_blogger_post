@@ -87,10 +87,11 @@ procedure Main(...)
     SET CENTURY ON
 
     if (!Empty(aArgs))
+        cParam:=Lower(aArgs[1])
         if (;
-            Lower(aArgs[1])=="-h";
+            cParam=="-h";
             .or.;
-            Lower(aArgs[1])=="--help";
+            cParam=="--help";
         )
             ShowHelp(nil,aArgs)
             return
