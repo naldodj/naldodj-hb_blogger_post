@@ -71,7 +71,7 @@ procedure Main(...)
 
     local lSuccess as logical:=.F.
     local lSanitizeData as logical
-    
+
     local idx as numeric
 
     #ifdef __ALT_D__    // Compile with -b
@@ -641,9 +641,9 @@ METHOD GetValue(cHKey as character) CLASS TDeepSeek
 METHOD Send(cPrompt as character) CLASS TDeepSeek
 
     local aHeaders as array
-    
+
     local cJSON as character
-    
+
     local hRequest as hash:={ => }
     local hMessage1 as hash:={ => }
     local hMessage2 as hash:={ => }
@@ -694,12 +694,12 @@ METHOD Send(cPrompt as character) CLASS TDeepSeek
 METHOD GetUserBalance() CLASS TDeepSeek
 
     local aHeaders as array
-    
+
     local cURL as character :="https://api.deepseek.com/user/balance"
     local hCurl as hash:=curl_easy_init()
 
     aHeaders:={"Content-Type: application/JSON","Authorization: Bearer "+::cKey}
-    
+
     curl_easy_setopt(hCurl,HB_CURLOPT_URL,cURL)
     curl_easy_setopt(hCurl,HB_CURLOPT_HTTPHEADER,aHeaders)
     curl_easy_setopt(hCurl,HB_CURLOPT_USERNAME,'')
@@ -731,7 +731,7 @@ METHOD GetUserBalance() CLASS TDeepSeek
     hCurl:=nil
 
     return ::cResponse
-    
+
 static procedure ShowSubHelp(xLine as anytype,/*@*/nMode as numeric,nIndent as numeric,n as numeric)
 
    DO CASE
@@ -801,8 +801,8 @@ static procedure ShowHelp(cExtraMessage as character,aArgs as array)
    /* using hbmk2 style */
    aEval(aHelp,{|x|ShowSubHelp(x,@nMode,0)})
 
-   return    
-    
+   return
+
 //----------------------------------------------------------------------------//
 
 /*
