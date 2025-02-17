@@ -19,6 +19,20 @@ REQUEST HB_CODEPAGE_UTF8EX
 #include "inkey.ch"
 #include "fileio.ch"
 #include "hbclass.ch"
+#include "hbcompat.ch"
+
+#define SW_HIDE             0
+#define SW_SHOWNORMAL       1
+#define SW_NORMAL           1
+#define SW_SHOWMINIMIZED    2
+#define SW_SHOWMAXIMIZED    3
+#define SW_MAXIMIZE         3
+#define SW_SHOWNOACTIVATE   4
+#define SW_SHOW             5
+#define SW_MINIMIZE         6
+#define SW_SHOWMINNOACTIVE  7
+#define SW_SHOWNA           8
+#define SW_RESTORE          9
 
 // Defina suas credenciais e chaves (substitua pelos seus valores)
 static cNewsApiKey as character // API key para o serviço de notícias
@@ -96,10 +110,18 @@ procedure Main()
 static function GetNews()
 
     local cURL as character
+    local cPrompt as character
     local cResponse as character
+    local cReponseUserBalance as character
+
+    local hNews as hash
+    local hReponseUserBalance as hash
+
+    local lSanitizeData as logical:=.F.
 
     local oURL as object
     local oHTTP as object
+    local oTDeepSeek as object
 
     cURL:="https://newsapi.org/v2/everything/"
 
@@ -122,7 +144,7 @@ static function GetNews()
            ,"to" => hb_DToC(Date(),"yyyy-mm-dd");
            ,"apiKey" => cNewsApiKey;
         };
-   )
+ )
 
     /* Connect to the HTTP server */
     oHTTP:nConnTimeout:=2000 /* 20000 */
@@ -143,6 +165,40 @@ static function GetNews()
 
     hb_default(@cResponse,"")
 
+    if ((lSanitizeData).and.!Empty(cResponse))
+        oTDeepSeek:=TDeepSeek():New()
+        hb_JSONDecode(cResponse,@hNews)
+        begin sequence
+            if ((valType(hNews)!="H").or.(!hb_HHasKey(hNews,"status")))
+                break
+            endif
+            if (hNews["status"]!="ok")
+                break
+            endif
+            if (hb_HHasKey(hNews,"totalResults"))
+                if (hNews["totalResults"]==0)
+                    break
+                endif
+            endif
+            if (!hb_HHasKey(hNews,"articles"))
+                break
+            endif
+            cReponseUserBalance:=oTDeepSeek:GetUserBalance()
+            hb_JSONDecode(cReponseUserBalance,@hReponseUserBalance)
+            #pragma __cstream|cPrompt:=%s
+Given the JSON containing news articles in Portuguese, filter out all articles unrelated to technology. Use the titles to identify technology-related content, such as topics on computing, software, devices, or modern technologies. Return a new JSON containing only technology-related articles. The returned JSON must maintain exactly the same structure and include all original properties from the input JSON, even if they are empty or null. Ensure the output is a valid JSON file with properly formatted URLs and dates. Respond only with the filtered JSON in the requested format.:
+            #pragma __endtext
+            cPrompt+=" "+hb_JSONEncode(hNews)
+            if (!((valType(hReponseUserBalance)=="H").and.(hb_HHasKey(hReponseUserBalance,"is_available")).and.(hReponseUserBalance["is_available"])))
+                oTDeepSeek:cUrl:="http://localhost:1234/v1/chat/completions"
+                oTDeepSeek:cModel:="deepseek-r1-distill-qwen-7b"
+            endif
+            oTDeepSeek:Send(cPrompt)
+            cResponse:=oTDeepSeek:GetValue()
+        end sequence
+        oTDeepSeek:End()
+    endif
+
     return(cResponse) as character
 
 //---------------------------------------------------------------------
@@ -153,7 +209,7 @@ static function JSONToMarkdown(cJSON as character)
 
     local aArticles as array
 
-    local cMarkdown as character := ""
+    local cMarkdown as character:=""
 
     local hJSON as hash
 
@@ -163,15 +219,15 @@ static function JSONToMarkdown(cJSON as character)
 
     begin sequence
 
-        hb_MemoWrit("JSONToMarkdownNews.json",cJSON)
+        hb_MemoWrit("JSONToMarkdownNews.JSON",cJSON)
 
         if (empty(cJSON))
             break
         endif
-        
+
         hb_JSONDecode(cJSON,@hJSON)
 
-        if (!hb_HHasKey(hJSON,"status"))
+        if ((valType(hJSON)!="H").or.(!hb_HHasKey(hJSON,"status")))
             break
         endif
 
@@ -328,7 +384,8 @@ static function GetOAuth2Token()
     local oHTTPServer as object
 
     ? "http://localhost:8002/"
-    hb_idleSleep(.1)
+    *hb_idleSleep(.1)
+    ShellExecuteEx(NIL,"open",".\tpl\hb_blogger_post.html","",NIL,SW_SHOWNORMAL)
 
     oLogError:=UHttpdLog():New("hb_blogger_post_error.log")
     oLogAccess:=UHttpdLog():New("hb_blogger_post_access.log")
@@ -355,7 +412,7 @@ static function GetOAuth2Token()
                 ,"/"               => {||URedirect("/auth")};
             };
         };
-   )
+ )
 
     oLogError:Close()
     oLogAccess:Close()
@@ -382,7 +439,7 @@ static function AuthHandler()
     local cParams as character:=""
     local cKey,cValue as character
     local hkey as hash
-    local hkeys as hash := {;
+    local hkeys as hash:={;
          "redirect_uri"   => cRedirectURI;
         ,"prompt"        => "consent";
         ,"response_type" => "code";
@@ -465,6 +522,191 @@ static function ExchangeCodeForToken(cAuthCode as character)
     endif
 
 return(cAccessToken)
+
+// Based on https://api-docs.deepseek.com
+// Remember to register in https://deepseek.com/ and get your API key
+// Class TDeepSeek for Harbour
+//----------------------------------------------------------------------------//
+CLASS TDeepSeek
+
+    DATA cKey INIT ""
+    DATA cModel INIT "deepseek-r1"
+    DATA cResponse
+    DATA cUrl
+    DATA hCurl
+
+    DATA nError INIT 0
+    DATA nHttpCode INIT 0
+
+    METHOD New(cKey,cModel)
+    METHOD Send(cPrompt)
+    METHOD End()
+    METHOD GetValue(cHKey)
+    METHOD GetUserBalance()
+
+ENDCLASS
+//----------------------------------------------------------------------------//
+METHOD New(cKey,cModel) CLASS TDeepSeek
+    if Empty(cKey)
+        ::cKey:=GetEnv("DEEPSEEK_API_KEY")
+    else
+        ::cKey:=cKey
+    endif
+    if ! Empty(cModel)
+        ::cModel:=cModel
+    endif
+    ::cUrl:="https://api.deepseek.com/chat/completions"
+    ::hCurl:=curl_easy_init()
+    return Self
+//----------------------------------------------------------------------------//
+METHOD End() CLASS TDeepSeek
+    curl_easy_cleanup(::hCurl)
+    ::hCurl:=nil
+    return(nil)
+//----------------------------------------------------------------------------//
+METHOD GetValue(cHKey) CLASS TDeepSeek
+    local aKeys:=hb_AParams(),cKey
+    local uValue:=hb_JSONDecode(::cResponse)
+    alert(::cResponse)
+    hb_default(@cHKey,"content")
+    if (cHKey=="content")
+        TRY
+            uValue:=uValue["choices"][1]["message"]["content"]
+        CATCH
+            uValue:=uValue["error"]["message"]
+        END
+    endif
+    TRY
+        for each cKey in aKeys
+            if ValType(uValue[cKey])=="A"
+                uValue:=uValue[cKey][1]["choices"][1]["message"]["content"]
+            else
+                uValue:=uValue[cKey]
+            endif
+        next
+    CATCH
+        //XBrowser(uValue)
+    END
+    return(uValue)
+//----------------------------------------------------------------------------//
+METHOD Send(cPrompt) CLASS TDeepSeek
+
+    local aHeaders,cJSON,hRequest:={ => },hMessage1:={ => },hMessage2:={ => }
+
+    curl_easy_setopt(::hCurl,HB_CURLOPT_POST,.T.)
+    curl_easy_setopt(::hCurl,HB_CURLOPT_URL,::cUrl)
+
+    aHeaders:={ "Content-Type: application/JSON","Authorization: Bearer "+::cKey}
+
+    curl_easy_setopt(::hCurl,HB_CURLOPT_HTTPHEADER,aHeaders)
+    curl_easy_setopt(::hCurl,HB_CURLOPT_USERNAME,'')
+    curl_easy_setopt(::hCurl,HB_CURLOPT_DL_BUFF_SETUP)
+    curl_easy_setopt(::hCurl,HB_CURLOPT_SSL_VERIFYPEER,.F.)
+
+    hRequest["model"]:=::cModel
+    hRequest["temperature"]:=0.2
+    //hRequest["stop"]:={"</think>"}
+
+    hMessage1["role"]:="system"
+    hMessage1["content"]:="You are a helpfull assistant."
+    hMessage2["role"]:="user"
+    hMessage2["content"]:=cPrompt
+    hRequest["messages"]:={ hMessage1,hMessage2 }
+    hRequest["stream"]:=.F.
+
+    cJSON:=hb_JSONEncode(hRequest)
+    curl_easy_setopt(::hCurl,HB_CURLOPT_POSTFIELDS,cJSON)
+
+    ::nError:=curl_easy_perform(::hCurl)
+
+    if (::nError==HB_CURLE_OK)
+        curl_easy_getinfo(::hCurl,HB_CURLINFO_RESPONSE_CODE,@::nHttpCode)
+        if (::nError==HB_CURLE_OK)
+            ::cResponse:=curl_easy_dl_buff_get(::hCurl)
+            if ("```json"$::cResponse)
+                ::cResponse:=SubStr(::cResponse,AT("```json",::cResponse)+1)
+                ::cResponse:=allTrim(SubStr(::cResponse,1,Len(::cResponse)-3))
+            endif
+        else
+            ::cResponse:="Error code " + Str(::nError)
+        endif
+    else
+        ::cResponse:="Error code " + Str(::nError)
+    endif
+
+    return(::cResponse)
+//----------------------------------------------------------------------------//
+METHOD GetUserBalance() CLASS TDeepSeek
+
+    local cURL:="https://api.deepseek.com/user/balance"
+    local hCurl:=curl_easy_init()
+    local aHeaders
+
+    curl_easy_setopt(hCurl,HB_CURLOPT_URL,cURL)
+    aHeaders:={"Content-Type: application/JSON","Authorization: Bearer "+::cKey}
+    curl_easy_setopt(hCurl,HB_CURLOPT_HTTPHEADER,aHeaders)
+    curl_easy_setopt(hCurl,HB_CURLOPT_USERNAME,'')
+
+    //Disabling the SSL peer verification (you can use it if you have no SSL certificate yet,but still want to test HTTPS)
+    curl_easy_setopt(hCurl,HB_CURLOPT_FOLLOWLOCATION,.T.)
+    curl_easy_setopt(hCurl,HB_CURLOPT_SSL_VERIFYPEER,.F.)
+    curl_easy_setopt(hCurl,HB_CURLOPT_SSL_VERIFYHOST,.F.)
+
+    curl_easy_setopt(hCurl,HB_CURLOPT_NOPROGRESS,.F.)
+    curl_easy_setopt(hCurl,HB_CURLOPT_VERBOSE,.T.)
+
+    //Setting the buffer
+    curl_easy_setopt(hCurl,HB_CURLOPT_DL_BUFF_SETUP)
+
+    ::nError:=curl_easy_perform(hCurl)
+    if (::nError==HB_CURLE_OK)
+        curl_easy_getinfo(hCurl,HB_CURLINFO_RESPONSE_CODE,@::nHttpCode)
+        if (::nError==HB_CURLE_OK)
+            ::cResponse:=curl_easy_dl_buff_get(hCurl)
+        else
+            ::cResponse:="Error code " + Str(::nError)
+        endif
+    else
+        ::cResponse:="Error code " + Str(::nError)
+    endif
+
+    curl_easy_cleanup(hCurl)
+    hCurl:=nil
+
+    return ::cResponse
+//----------------------------------------------------------------------------//
+
+/*
+ * C-level
+*/
+#pragma BEGINDUMP
+
+    #include <shlobj.h>
+    #include <windows.h>
+    #include "hbapi.h"
+
+    HB_FUNC_STATIC(SHELLEXECUTEEX)
+    {
+        SHELLEXECUTEINFO SHExecInfo;
+
+        ZeroMemory(&SHExecInfo,sizeof(SHExecInfo));
+
+        SHExecInfo.cbSize = sizeof(SHExecInfo);
+        SHExecInfo.fMask = SEE_MASK_NOCLOSEPROCESS;
+        SHExecInfo.hwnd  = HB_ISNIL(1) ? GetActiveWindow() : (HWND) hb_parnl(1);
+        SHExecInfo.lpVerb = (LPCSTR) hb_parc(2);
+        SHExecInfo.lpFile = (LPCSTR) hb_parc(3);
+        SHExecInfo.lpParameters = (LPCSTR) hb_parc(4);
+        SHExecInfo.lpDirectory = (LPCSTR) hb_parc(5);
+        SHExecInfo.nShow = hb_parni(6);
+
+        if(ShellExecuteEx(&SHExecInfo))
+            hb_retptr(SHExecInfo.hProcess);  // Retorna um ponteiro corretamente
+        else
+            hb_retptr(NULL);                 // Retorna NULL se falhar
+    }
+
+#pragma ENDDUMP
 
 //---------------------------------------------------------------------
 // Fim do programa
