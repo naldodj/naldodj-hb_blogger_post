@@ -583,7 +583,7 @@ CLASS TDeepSeek
     DATA cModel as character INIT "deepseek-r1"
     DATA cResponse as character
     DATA cUrl as character
-    DATA hCurl as hash
+    DATA phCurl as pointer
 
     DATA nError as numeric INIT 0
     DATA nHttpCode  as numeric INIT 0
@@ -606,12 +606,12 @@ METHOD New(cKey as character,cModel as character) CLASS TDeepSeek
         ::cModel:=cModel
     endif
     ::cUrl:="https://api.deepseek.com/chat/completions"
-    ::hCurl:=curl_easy_init()
+    ::phCurl:=curl_easy_init()
     return(Self)
 //----------------------------------------------------------------------------//
 METHOD End() CLASS TDeepSeek
-    curl_easy_cleanup(::hCurl)
-    ::hCurl:=nil
+    curl_easy_cleanup(::phCurl)
+    ::phCurl:=nil
     return(nil)
 //----------------------------------------------------------------------------//
 METHOD GetValue(cHKey as character) CLASS TDeepSeek
@@ -649,15 +649,15 @@ METHOD Send(cPrompt as character) CLASS TDeepSeek
     local hMessage1 as hash:={ => }
     local hMessage2 as hash:={ => }
 
-    curl_easy_setopt(::hCurl,HB_CURLOPT_POST,.T.)
-    curl_easy_setopt(::hCurl,HB_CURLOPT_URL,::cUrl)
+    curl_easy_setopt(::phCurl,HB_CURLOPT_POST,.T.)
+    curl_easy_setopt(::phCurl,HB_CURLOPT_URL,::cUrl)
 
     aHeaders:={ "Content-Type: application/JSON","Authorization: Bearer "+::cKey}
 
-    curl_easy_setopt(::hCurl,HB_CURLOPT_HTTPHEADER,aHeaders)
-    curl_easy_setopt(::hCurl,HB_CURLOPT_USERNAME,'')
-    curl_easy_setopt(::hCurl,HB_CURLOPT_DL_BUFF_SETUP)
-    curl_easy_setopt(::hCurl,HB_CURLOPT_SSL_VERIFYPEER,.F.)
+    curl_easy_setopt(::phCurl,HB_CURLOPT_HTTPHEADER,aHeaders)
+    curl_easy_setopt(::phCurl,HB_CURLOPT_USERNAME,'')
+    curl_easy_setopt(::phCurl,HB_CURLOPT_DL_BUFF_SETUP)
+    curl_easy_setopt(::phCurl,HB_CURLOPT_SSL_VERIFYPEER,.F.)
 
     hRequest["model"]:=::cModel
     hRequest["temperature"]:=0.2
@@ -671,14 +671,14 @@ METHOD Send(cPrompt as character) CLASS TDeepSeek
     hRequest["stream"]:=.F.
 
     cJSON:=hb_JSONEncode(hRequest)
-    curl_easy_setopt(::hCurl,HB_CURLOPT_POSTFIELDS,cJSON)
+    curl_easy_setopt(::phCurl,HB_CURLOPT_POSTFIELDS,cJSON)
 
-    ::nError:=curl_easy_perform(::hCurl)
+    ::nError:=curl_easy_perform(::phCurl)
 
     if (::nError==HB_CURLE_OK)
-        curl_easy_getinfo(::hCurl,HB_CURLINFO_RESPONSE_CODE,@::nHttpCode)
+        curl_easy_getinfo(::phCurl,HB_CURLINFO_RESPONSE_CODE,@::nHttpCode)
         if (::nError==HB_CURLE_OK)
-            ::cResponse:=curl_easy_dl_buff_get(::hCurl)
+            ::cResponse:=curl_easy_dl_buff_get(::phCurl)
             if ("```json"$::cResponse)
                 ::cResponse:=SubStr(::cResponse,AT("```json",::cResponse)+1)
                 ::cResponse:=allTrim(SubStr(::cResponse,1,Len(::cResponse)-3))
@@ -697,30 +697,30 @@ METHOD GetUserBalance() CLASS TDeepSeek
     local aHeaders as array
 
     local cURL as character :="https://api.deepseek.com/user/balance"
-    local hCurl as hash:=curl_easy_init()
+    local phCurl as pointer:=curl_easy_init()
 
     aHeaders:={"Content-Type: application/JSON","Authorization: Bearer "+::cKey}
 
-    curl_easy_setopt(hCurl,HB_CURLOPT_URL,cURL)
-    curl_easy_setopt(hCurl,HB_CURLOPT_HTTPHEADER,aHeaders)
-    curl_easy_setopt(hCurl,HB_CURLOPT_USERNAME,'')
+    curl_easy_setopt(phCurl,HB_CURLOPT_URL,cURL)
+    curl_easy_setopt(phCurl,HB_CURLOPT_HTTPHEADER,aHeaders)
+    curl_easy_setopt(phCurl,HB_CURLOPT_USERNAME,'')
 
     //Disabling the SSL peer verification (you can use it if you have no SSL certificate yet,but still want to test HTTPS)
-    curl_easy_setopt(hCurl,HB_CURLOPT_FOLLOWLOCATION,.T.)
-    curl_easy_setopt(hCurl,HB_CURLOPT_SSL_VERIFYPEER,.F.)
-    curl_easy_setopt(hCurl,HB_CURLOPT_SSL_VERIFYHOST,.F.)
+    curl_easy_setopt(phCurl,HB_CURLOPT_FOLLOWLOCATION,.T.)
+    curl_easy_setopt(phCurl,HB_CURLOPT_SSL_VERIFYPEER,.F.)
+    curl_easy_setopt(phCurl,HB_CURLOPT_SSL_VERIFYHOST,.F.)
 
-    curl_easy_setopt(hCurl,HB_CURLOPT_NOPROGRESS,.F.)
-    curl_easy_setopt(hCurl,HB_CURLOPT_VERBOSE,.T.)
+    curl_easy_setopt(phCurl,HB_CURLOPT_NOPROGRESS,.F.)
+    curl_easy_setopt(phCurl,HB_CURLOPT_VERBOSE,.T.)
 
     //Setting the buffer
-    curl_easy_setopt(hCurl,HB_CURLOPT_DL_BUFF_SETUP)
+    curl_easy_setopt(phCurl,HB_CURLOPT_DL_BUFF_SETUP)
 
-    ::nError:=curl_easy_perform(hCurl)
+    ::nError:=curl_easy_perform(phCurl)
     if (::nError==HB_CURLE_OK)
-        curl_easy_getinfo(hCurl,HB_CURLINFO_RESPONSE_CODE,@::nHttpCode)
+        curl_easy_getinfo(phCurl,HB_CURLINFO_RESPONSE_CODE,@::nHttpCode)
         if (::nError==HB_CURLE_OK)
-            ::cResponse:=curl_easy_dl_buff_get(hCurl)
+            ::cResponse:=curl_easy_dl_buff_get(phCurl)
         else
             ::cResponse:="Error code " + Str(::nError)
         endif
@@ -728,8 +728,8 @@ METHOD GetUserBalance() CLASS TDeepSeek
         ::cResponse:="Error code " + Str(::nError)
     endif
 
-    curl_easy_cleanup(hCurl)
-    hCurl:=nil
+    curl_easy_cleanup(phCurl)
+    phCurl:=nil
 
     return ::cResponse
 
