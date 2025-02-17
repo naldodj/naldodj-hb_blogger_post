@@ -11,11 +11,12 @@
 
 REQUEST HB_CODEPAGE_UTF8EX
 
-#if ! defined(__HBSCRIPT__HBSHELL)
+#if !defined(__HBSCRIPT__HBSHELL)
     REQUEST __HBEXTERN__HBSSL__
 #endif
 
 #include "tip.ch"
+#include "hbver.ch"
 #include "inkey.ch"
 #include "fileio.ch"
 #include "hbclass.ch"
@@ -55,14 +56,28 @@ MEMVAR server,get,post,cookie,session
 // Função: Main()
 // Executa o fluxo: busca notícias -> gera Markdown -> converte para HTML -> publica no Blogger
 //---------------------------------------------------------------------
-procedure Main()
+procedure Main(...)
 
+    local aArgs as array:=hb_AParams()
+
+    local cTo as character
+    local cFrom as character
     local cHtml as character
+    local cParam as character
     local cTitle as character
+    local cArgName as character
     local cMarkdown as character
     local cNewsJSON as character
 
     local lSuccess as logical:=.F.
+    local lSanitizeData as logical
+    
+    local idx as numeric
+
+    #ifdef __ALT_D__    // Compile with -b
+        AltD(1)         // Enables the debugger. Press F5 to go.
+        AltD()          // Invokes the debugger
+    #endif
 
     cEOL:=hb_eol()
     hb_setCodePage("UTF8")
@@ -71,16 +86,52 @@ procedure Main()
     SET DATE ANSI
     SET CENTURY ON
 
-    #ifdef __ALT_D__    // Compile with -b
-        AltD(1)         // Enables the debugger. Press F5 to go.
-        AltD()          // Invokes the debugger
-    #endif
+    if (!Empty(aArgs))
+        if (;
+            Lower(aArgs[1])=="-h";
+            .or.;
+            Lower(aArgs[1])=="--help";
+        )
+            ShowHelp(nil,aArgs)
+            return
+        endif
+        for each cParam in aArgs
+            if (!Empty(cParam))
+                if ((idx:=At("=",cParam))==0)
+                    cArgName:=Lower(cParam)
+                    cParam:=""
+                else
+                    cArgName:=Left(cParam,idx-1)
+                    cParam:=SubStr(cParam,idx+1)
+                endif
+                do case
+                case (cArgName=="-sanitize")
+                    if (!Empty(cParam))
+                        lSanitizeData:=(Left(cParam,1)$"Tt")
+                    else
+                        lSanitizeData:=.T.
+                    endif
+                case (cArgName=="-from")
+                    cFrom:=cParam
+                case (cArgName=="-to")
+                    cTo:=cParam
+                otherwise
+                   ShowHelp("Unrecognized option:"+cArgName+iif(Len(cParam)>0,"="+cParam,""))
+                   return
+                endcase
+            endif
+        next each
+    endif
+
+    hb_Default(@lSanitizeData,.F.)
+    hb_Default(@cFrom,hb_DToC(Date(),"yyyy-mm-dd"))
+    hb_Default(@cTo,hb_DToC(Date(),"yyyy-mm-dd"))
 
     begin sequence
 
         cNewsApiKey:=GetEnv("NEWS_API_KEY") // API key para o serviço de notícias
         // 1. Buscar notícias de tecnologia
-        cNewsJSON:=GetNews()
+        cNewsJSON:=GetNews(lSanitizeData,cFrom,cTo)
 
         // 2. Processar JSON e gerar Markdown
         cMarkdown:=JSONToMarkdown(cNewsJSON)
@@ -107,7 +158,7 @@ procedure Main()
 // Função: GetNews()
 // Usa TIPClientHTTP para efetuar uma requisição GET à API de notícias.
 //---------------------------------------------------------------------
-static function GetNews()
+static function GetNews(lSanitizeData as logical,cFrom as character,cTo as character)
 
     local cURL as character
     local cPrompt as character
@@ -116,8 +167,6 @@ static function GetNews()
 
     local hNews as hash
     local hReponseUserBalance as hash
-
-    local lSanitizeData as logical:=.F.
 
     local oURL as object
     local oHTTP as object
@@ -140,8 +189,8 @@ static function GetNews()
             "q" => "tecnologia";
            ,"sortBy" => "popularity";
            ,"language" => "pt";
-           ,"from" => hb_DToC(Date(),"yyyy-mm-dd");
-           ,"to" => hb_DToC(Date(),"yyyy-mm-dd");
+           ,"from" => cFrom;
+           ,"to" => cTo;
            ,"apiKey" => cNewsApiKey;
         };
  )
@@ -188,7 +237,7 @@ static function GetNews()
             #pragma __cstream|cPrompt:=%s
 Given the JSON containing news articles in Portuguese, filter out all articles unrelated to technology. Use the titles to identify technology-related content, such as topics on computing, software, devices, or modern technologies. Return a new JSON containing only technology-related articles. The returned JSON must maintain exactly the same structure and include all original properties from the input JSON, even if they are empty or null. Ensure the output is a valid JSON file with properly formatted URLs and dates. Respond only with the filtered JSON in the requested format.:
             #pragma __endtext
-            cPrompt+=" "+hb_JSONEncode(hNews)
+            cPrompt+=" ```json"+hb_JSONEncode(hNews)+"```"
             if (!((valType(hReponseUserBalance)=="H").and.(hb_HHasKey(hReponseUserBalance,"is_available")).and.(hReponseUserBalance["is_available"])))
                 oTDeepSeek:cUrl:="http://localhost:1234/v1/chat/completions"
                 oTDeepSeek:cModel:="deepseek-r1-distill-qwen-7b"
@@ -529,45 +578,45 @@ return(cAccessToken)
 //----------------------------------------------------------------------------//
 CLASS TDeepSeek
 
-    DATA cKey INIT ""
-    DATA cModel INIT "deepseek-r1"
-    DATA cResponse
-    DATA cUrl
-    DATA hCurl
+    DATA cKey as character INIT ""
+    DATA cModel as character INIT "deepseek-r1"
+    DATA cResponse as character
+    DATA cUrl as character
+    DATA hCurl as hash
 
-    DATA nError INIT 0
-    DATA nHttpCode INIT 0
+    DATA nError as numeric INIT 0
+    DATA nHttpCode  as numeric INIT 0
 
-    METHOD New(cKey,cModel)
-    METHOD Send(cPrompt)
+    METHOD New(cKey as character,cModel as character)
+    METHOD Send(cPrompt as character)
     METHOD End()
-    METHOD GetValue(cHKey)
+    METHOD GetValue(cHKey as character)
     METHOD GetUserBalance()
 
 ENDCLASS
 //----------------------------------------------------------------------------//
-METHOD New(cKey,cModel) CLASS TDeepSeek
-    if Empty(cKey)
+METHOD New(cKey as character,cModel as character) CLASS TDeepSeek
+    if Empty(cKey as character)
         ::cKey:=GetEnv("DEEPSEEK_API_KEY")
     else
         ::cKey:=cKey
     endif
-    if ! Empty(cModel)
+    if (!Empty(cModel))
         ::cModel:=cModel
     endif
     ::cUrl:="https://api.deepseek.com/chat/completions"
     ::hCurl:=curl_easy_init()
-    return Self
+    return(Self)
 //----------------------------------------------------------------------------//
 METHOD End() CLASS TDeepSeek
     curl_easy_cleanup(::hCurl)
     ::hCurl:=nil
     return(nil)
 //----------------------------------------------------------------------------//
-METHOD GetValue(cHKey) CLASS TDeepSeek
-    local aKeys:=hb_AParams(),cKey
+METHOD GetValue(cHKey as character) CLASS TDeepSeek
+    local aKeys as array:=hb_AParams()
+    local cKey as character
     local uValue:=hb_JSONDecode(::cResponse)
-    alert(::cResponse)
     hb_default(@cHKey,"content")
     if (cHKey=="content")
         TRY
@@ -589,9 +638,15 @@ METHOD GetValue(cHKey) CLASS TDeepSeek
     END
     return(uValue)
 //----------------------------------------------------------------------------//
-METHOD Send(cPrompt) CLASS TDeepSeek
+METHOD Send(cPrompt as character) CLASS TDeepSeek
 
-    local aHeaders,cJSON,hRequest:={ => },hMessage1:={ => },hMessage2:={ => }
+    local aHeaders as array
+    
+    local cJSON as character
+    
+    local hRequest as hash:={ => }
+    local hMessage1 as hash:={ => }
+    local hMessage2 as hash:={ => }
 
     curl_easy_setopt(::hCurl,HB_CURLOPT_POST,.T.)
     curl_easy_setopt(::hCurl,HB_CURLOPT_URL,::cUrl)
@@ -638,12 +693,14 @@ METHOD Send(cPrompt) CLASS TDeepSeek
 //----------------------------------------------------------------------------//
 METHOD GetUserBalance() CLASS TDeepSeek
 
-    local cURL:="https://api.deepseek.com/user/balance"
-    local hCurl:=curl_easy_init()
-    local aHeaders
+    local aHeaders as array
+    
+    local cURL as character :="https://api.deepseek.com/user/balance"
+    local hCurl as hash:=curl_easy_init()
 
-    curl_easy_setopt(hCurl,HB_CURLOPT_URL,cURL)
     aHeaders:={"Content-Type: application/JSON","Authorization: Bearer "+::cKey}
+    
+    curl_easy_setopt(hCurl,HB_CURLOPT_URL,cURL)
     curl_easy_setopt(hCurl,HB_CURLOPT_HTTPHEADER,aHeaders)
     curl_easy_setopt(hCurl,HB_CURLOPT_USERNAME,'')
 
@@ -674,6 +731,78 @@ METHOD GetUserBalance() CLASS TDeepSeek
     hCurl:=nil
 
     return ::cResponse
+    
+static procedure ShowSubHelp(xLine as anytype,/*@*/nMode as numeric,nIndent as numeric,n as numeric)
+
+   DO CASE
+      CASE xLine == NIL
+      CASE HB_ISNUMERIC( xLine )
+         nMode := xLine
+      CASE HB_ISEVALITEM( xLine )
+         Eval( xLine )
+      CASE HB_ISARRAY( xLine )
+         IF nMode == 2
+            OutStd( Space( nIndent ) + Space( 2 ) )
+         ENDIF
+         AEval( xLine, {| x, n | ShowSubHelp( x, @nMode, nIndent + 2, n ) } )
+         IF nMode == 2
+            OutStd( hb_eol() )
+         ENDIF
+      OTHERWISE
+         DO CASE
+            CASE nMode == 1 ; OutStd( Space( nIndent ) + xLine + hb_eol() )
+            CASE nMode == 2 ; OutStd( iif( n > 1, ", ", "" ) + xLine )
+            OTHERWISE       ; OutStd( "(" + hb_ntos( nMode ) + ") " + xLine + hb_eol() )
+         ENDCASE
+   ENDCASE
+
+   RETURN
+
+static function HBRawVersion()
+   return(;
+       hb_StrFormat( "%d.%d.%d%s (%s) (%s)";
+      ,hb_Version(HB_VERSION_MAJOR);
+      ,hb_Version(HB_VERSION_MINOR);
+      ,hb_Version(HB_VERSION_RELEASE);
+      ,hb_Version(HB_VERSION_STATUS);
+      ,hb_Version(HB_VERSION_ID);
+      ,"20"+Transform(hb_Version(HB_VERSION_REVISION),"99-99-99 99:99"));
+   ) as character
+
+static procedure ShowHelp(cExtraMessage as character,aArgs as array)
+
+   local aHelp as array
+   local nMode as numeric:=1
+
+   if (Empty(aArgs).or.(Len(aArgs)<=1).or.(Empty(aArgs[1])))
+      aHelp:={;
+         cExtraMessage;
+         ,"hb_blogger_post ("+ExeName()+") "+HBRawVersion();
+         ,"Copyright (c) 2024-"+hb_NToS(Year(Date()))+", "+hb_Version(HB_VERSION_URL_BASE);
+         ,"";
+         ,"Syntax:";
+         ,"";
+         ,{ExeName()+" [options]"};
+         ,"";
+         ,"Options:";
+       ,{;
+             "-h or --help    Show this help screen";
+            ,"-sanitize       Filter the JSON, keeping only technology-related information";
+            ,"-from=<date>    Specify the start date [yyyy-mm-dd]";
+            ,"-to=<date>      Specify the end date [yyyy-mm-dd]";
+         };
+         ,"";
+      }
+   else
+      ShowHelp("Unrecognized help option")
+      return
+   endif
+
+   /* using hbmk2 style */
+   aEval(aHelp,{|x|ShowSubHelp(x,@nMode,0)})
+
+   return    
+    
 //----------------------------------------------------------------------------//
 
 /*
