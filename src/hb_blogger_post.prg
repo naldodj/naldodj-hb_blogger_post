@@ -254,11 +254,11 @@ static function GetNews(lSanitizeData as logical,cFrom as character,cTo as chara
 Given individual JSON objects representing news articles in Portuguese, determine if each article is related to technology. Use the title to identify technology-related content, such as topics on computing, software, devices, or modern technologies. For each article, respond only with true if it is related to technology or false if it is not. Maintain the same evaluation criteria for all responses.:
                 #pragma __endtext
                 cJSONArticle:=hb_JSONEncode(hArticle)
-                cPrompt+=" ```json"+cJSONArticle+"```"
+                cPrompt+=" ```json"+cEOL+cJSONArticle+cEOL+"```"
                 oTDeepSeek:Send(cPrompt)
                 cResponse:=oTDeepSeek:GetValue()
-                cResponse:=allTrim(subStr(cResponse,AT("</think>",cResponse)+8))
-                if ("true"$cResponse)
+                lNewsTech:=("true"==Right(cResponse,4)
+                if (lNewsTech)
                     aAdd(aNewsTech,hArticle)
                 endif
             end each
