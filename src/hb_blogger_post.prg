@@ -162,7 +162,7 @@ procedure Main(...)
 static function GetNews(lSanitizeData as logical,cFrom as character,cTo as character)
 
     local aNewsTech as array
-    
+
     local cURL as character
     local cPrompt as character
     local cResponse as character
@@ -171,7 +171,7 @@ static function GetNews(lSanitizeData as logical,cFrom as character,cTo as chara
 
     local hNews,hArticle as hash
     local hReponseUserBalance as hash
-    
+
     local lNewsTech as logical
 
     local nArticle as numeric
@@ -249,7 +249,7 @@ static function GetNews(lSanitizeData as logical,cFrom as character,cTo as chara
             aNewsTech:=Array(0)
             for each hArticle in hNews["articles"]
                 nArticle:=hArticle:__enumIndex()
-                hb_HSet(hArticle,"sourceIndex",nArticle)                
+                hb_HSet(hArticle,"sourceIndex",nArticle)
                 #pragma __cstream|cPrompt:=%s
 Given individual JSON objects representing news articles in Portuguese, determine if each article is related to technology. Use the title to identify technology-related content, such as topics on computing, software, devices, or modern technologies. For each article, respond only with true if it is related to technology or false if it is not. Maintain the same evaluation criteria for all responses.:
                 #pragma __endtext
@@ -257,7 +257,7 @@ Given individual JSON objects representing news articles in Portuguese, determin
                 cPrompt+=" ```json"+cEOL+cJSONArticle+cEOL+"```"
                 oTDeepSeek:Send(cPrompt)
                 cResponse:=oTDeepSeek:GetValue()
-                lNewsTech:=("true"==Right(cResponse,4)
+                lNewsTech:=("true"==Right(cResponse,4))
                 if (lNewsTech)
                     aAdd(aNewsTech,hArticle)
                 endif
@@ -648,12 +648,16 @@ METHOD GetValue(cHKey as character) CLASS TDeepSeek
         TRY
             uValue:=uValue["choices"][1]["message"]["content"]
         CATCH
-            uValue:=uValue["error"]["message"]
+            TRY
+                uValue:=uValue["error"]["message"]
+            CATCH 
+                uValue:=uValue
+            END
         END
     endif
     TRY
         for each cKey in aKeys
-            if ValType(uValue[cKey])=="A"
+            if (ValType(uValue[cKey])=="A")
                 uValue:=uValue[cKey][1]["choices"][1]["message"]["content"]
             else
                 uValue:=uValue[cKey]
