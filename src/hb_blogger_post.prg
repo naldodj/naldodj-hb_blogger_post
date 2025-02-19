@@ -188,6 +188,7 @@ static function GetNews(lSanitizedata as logical,cFrom as character,cTo as chara
     local oTDeepSeek as object
 
     cURL:=s_hIni["NEWSAPI"]["URL"]
+    cURL+=s_hIni["NEWSAPI"]["PATH"]
 
     //FixMe!
     cURL:=strTran(cURL,"https","http")
@@ -250,7 +251,10 @@ static function GetNews(lSanitizedata as logical,cFrom as character,cTo as chara
             cReponseUserBalance:=oTDeepSeek:GetUserBalance()
             hb_JSONDecode(cReponseUserBalance,@hReponseUserBalance)
             if (!((valType(hReponseUserBalance)=="H").and.(hb_HHasKey(hReponseUserBalance,"is_available")).and.(hReponseUserBalance["is_available"])))
-                oTDeepSeek:cUrl:=s_hIni["LMSTUDIO"]["URL"]+":"+hb_NToC(s_hIni["LMSTUDIO"]["PORT"])+"/v1/chat/completions"
+                oTDeepSeek:cUrl:=s_hIni["LMSTUDIO"]["URL"]
+                oTDeepSeek:cUrl+=":"
+                oTDeepSeek:cUrl+=hb_NToC(s_hIni["LMSTUDIO"]["PORT"])
+                oTDeepSeek:cUrl+=s_hIni["LMSTUDIO"]["PATH"]
                 oTDeepSeek:cModel:=s_hIni["LMSTUDIO"]["MODEL"]
             endif
             aNewsTech:=Array(0)
@@ -645,6 +649,7 @@ class TDeepSeek
 endclass
 //----------------------------------------------------------------------------//
 method New(cKey as character,cModel as character) class TDeepSeek
+    ::phCurl:=curl_easy_init()
     if (Empty(cKey))
         ::cKey:=GetEnv("DEEPSEEK_API_KEY")
     else
@@ -656,7 +661,7 @@ method New(cKey as character,cModel as character) class TDeepSeek
         ::cModel:=s_hIni["DEEPSEEK"]["MODEL"]
     endif
     ::cUrl:=s_hIni["DEEPSEEK"]["URL"]
-    ::phCurl:=curl_easy_init()
+    ::cUrl+=s_hIni["DEEPSEEK"]["PATH"]
     return(self)
 //----------------------------------------------------------------------------//
 method End() class TDeepSeek
@@ -748,10 +753,16 @@ method GetUserBalance() class TDeepSeek
 
     local aHeaders as array
 
-    local cURL as character:=s_hIni["DEEPSEEK"]["URLBALANCE"]
-    local phCurl as pointer:=curl_easy_init()
+    local cURL as character
+
+    local phCurl as pointer
 
     aHeaders:={"Content-Type: application/JSON","Authorization: Bearer "+::cKey}
+
+    cURL:=s_hIni["DEEPSEEK"]["URLBALANCE"]
+    cURL+=s_hIni["DEEPSEEK"]["PATHBALANCE"]
+
+    phCurl:=curl_easy_init()
 
     curl_easy_setopt(phCurl,HB_CURLOPT_URL,cURL)
     curl_easy_setopt(phCurl,HB_CURLOPT_HTTPHEADER,aHeaders)
@@ -881,7 +892,8 @@ static function ParseIni()
     hDefault:={;
          "MAIN" => { => };
         ,"NEWSAPI" => {;
-             "URL" => "https://newsapi.org/v2/everything/";
+             "URL" => "https://newsapi.org";
+            ,"PATH" => "/v2/everything/";
             ,"QUERY" => "tecnologia";
             ,"SORTBY" => "popularity";
             ,"LANGUAGE" => "pt";
@@ -892,13 +904,16 @@ static function ParseIni()
             ,"MAINPAGE" => ".\tpl\hb_blogger_post.html";
         };
         ,"DEEPSEEK" => {;
-             "URL" => "https://api.deepseek.com/chat/completions";
-            ,"URLBALANCE" => "https://api.deepseek.com/user/balance";
+             "URL" => "https://api.deepseek.com";
+            ,"PATH" => "/chat/completions";
+            ,"URLBALANCE" => "https://api.deepseek.com";
+            ,"PATHBALANCE" => "/user/balance";
             ,"MODEL" => "deepseek-r1";
         };
         ,"LMSTUDIO"=> {;
              "URL" => "http://127.0.0.1";
             ,"PORT" => 1234;
+            ,"PATH" => "/v1/chat/completions";
             ,"MODEL" => "deepseek-r1-distill-qwen-7b";
         };
     }
