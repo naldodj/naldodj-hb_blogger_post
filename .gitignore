@@ -7,3 +7,4 @@ src/hb_blogger_post_access.log
 src/hb_blogger_post_error.log
 src/hb_blogger_post_webview.prg
 src/JSONToMarkdownNews.json
+src/hb_blogger_post.ps1
