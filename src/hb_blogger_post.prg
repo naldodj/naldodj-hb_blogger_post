@@ -162,6 +162,108 @@ procedure Main(...)
 
     return
 
+//----------------------------------------------------------------------------//
+static function ParseIni(lDefaultOnly as logical)
+
+    local cKey as character
+    local cVal as character
+    local cSection as character
+    local cIniFile as character
+
+    local hIni as hash
+    local hSect as hash
+    local hDefault as hash
+
+    local nPos as numeric
+
+    local xVal as anytype
+
+    hb_default(@lDefaultOnly,.F.)
+
+    // Define here what attributes we can have in ini config file and their defaults
+    // Please add all keys in uppercase. hDefaults is case Insensitive
+    hDefault:={;
+         "MAIN" => { => };
+        ,"NEWSAPI" => {;
+             "URL" => "https://newsapi.org";
+            ,"PATH" => "/v2/everything/";
+            ,"QUERY" => "tecnologia";
+            ,"SORTBY" => "popularity";
+            ,"LANGUAGE" => "pt";
+        };
+        ,"HTTPSERVER"=> {;
+             "URL" => "http://127.0.0.1";
+            ,"PORT" => 8002;
+            ,"MAINPAGE" => ".\tpl\hb_blogger_post.html";
+        };
+        ,"DEEPSEEK" => {;
+             "URL" => "https://api.deepseek.com";
+            ,"PATH" => "/chat/completions";
+            ,"URLBALANCE" => "https://api.deepseek.com";
+            ,"PATHBALANCE" => "/user/balance";
+            ,"MODEL" => "deepseek-r1";
+        };
+        ,"LMSTUDIO"=> {;
+             "URL" => "http://127.0.0.1";
+            ,"PORT" => 1234;
+            ,"PATH" => "/v1/chat/completions";
+            ,"MODEL" => "deepseek-r1-distill-qwen-7b";
+        };
+    }
+
+    hb_HCaseMatch(hDefault,.F.)
+
+    if (!lDefaultOnly)
+
+        cIniFile:=hb_FNameExtSet(ExeName(),".ini")
+        if (hb_FileExists(cIniFile))
+            hIni:=hb_iniRead(cIniFile,.T.)// .T. = load all keys in MixedCase,redundant as it is default,but to remember
+        endif
+
+        // Now read changes from ini file and modify only admited keys
+        if (!Empty(hIni))
+            for each cSection in hIni:Keys
+                cSection:=Upper(cSection)
+                if (cSection$hDefault)
+                    hSect:=hIni[cSection]
+                    if (HB_ISHASH(hSect))
+                        for each cKey in hSect:Keys
+                            // Please,below check values MUST be uppercase
+                            if ((cKey:=Upper(cKey))$hDefault[cSection]) // force cKey to be uppercase
+                                if ((nPos:=hb_HScan(hSect,{|k|Upper(k)==cKey}))>0)
+                                    cVal:=hb_HValueAt(hSect,nPos)
+                                    switch cSection
+                                    case "HTTPSERVER"
+                                        if (cKey=="PORT")
+                                            xVal:=Val(cVal)
+                                        else
+                                            xVal:=cVal
+                                        endif
+                                        exit
+                                    case "LMSTUDIO"
+                                        if (cKey=="PORT")
+                                            xVal:=Val(cVal)
+                                        else
+                                            xVal:=cVal
+                                        endif
+                                        exit
+                                    otherwise
+                                        xVal:=cVal
+                                    end switch
+                                    if (xVal!=NIL)
+                                        hDefault[cSection][cKey]:=xVal
+                                    endif
+                                endif
+                            endif
+                        next cKey
+                    endif
+                endif
+            next cSection
+        endif
+    endif
+
+   return(hDefault)
+
 //---------------------------------------------------------------------
 // Função: GetNews()
 // Usa TIPClientHTTP para efetuar uma requisição GET à API de notícias.
@@ -884,7 +986,7 @@ static procedure ShowHelp(cExtraMessage as character,aArgs as array)
       aHelp:={;
          cExtraMessage;
          ,"hb_blogger_post ("+ExeName()+") "+HBRawVersion();
-         ,"Copyright (c) 2024-"+hb_NToS(Year(Date()))+","+hb_Version(HB_VERSION_URL_BASE);
+         ,"Copyright (c) 2025-"+hb_NToS(Year(Date()))+","+hb_Version(HB_VERSION_URL_BASE);
          ,"";
          ,"Syntax:";
          ,"";
@@ -913,108 +1015,6 @@ static procedure ShowHelp(cExtraMessage as character,aArgs as array)
    aEval(aHelp,{|x|ShowSubHelp(x,@nMode,0)})
 
    return
-
-//----------------------------------------------------------------------------//
-static function ParseIni(lDefaultOnly as logical)
-
-    local cKey as character
-    local cVal as character
-    local cSection as character
-    local cIniFile as character
-
-    local hIni as hash
-    local hSect as hash
-    local hDefault as hash
-
-    local nPos as numeric
-
-    local xVal as anytype
-
-    hb_default(@lDefaultOnly,.F.)
-
-    // Define here what attributes we can have in ini config file and their defaults
-    // Please add all keys in uppercase. hDefaults is case Insensitive
-    hDefault:={;
-         "MAIN" => { => };
-        ,"NEWSAPI" => {;
-             "URL" => "https://newsapi.org";
-            ,"PATH" => "/v2/everything/";
-            ,"QUERY" => "tecnologia";
-            ,"SORTBY" => "popularity";
-            ,"LANGUAGE" => "pt";
-        };
-        ,"HTTPSERVER"=> {;
-             "URL" => "http://127.0.0.1";
-            ,"PORT" => 8002;
-            ,"MAINPAGE" => ".\tpl\hb_blogger_post.html";
-        };
-        ,"DEEPSEEK" => {;
-             "URL" => "https://api.deepseek.com";
-            ,"PATH" => "/chat/completions";
-            ,"URLBALANCE" => "https://api.deepseek.com";
-            ,"PATHBALANCE" => "/user/balance";
-            ,"MODEL" => "deepseek-r1";
-        };
-        ,"LMSTUDIO"=> {;
-             "URL" => "http://127.0.0.1";
-            ,"PORT" => 1234;
-            ,"PATH" => "/v1/chat/completions";
-            ,"MODEL" => "deepseek-r1-distill-qwen-7b";
-        };
-    }
-
-    hb_HCaseMatch(hDefault,.F.)
-
-    if (!lDefaultOnly)
-
-        cIniFile:=hb_FNameExtSet(ExeName(),".ini")
-        if (hb_FileExists(cIniFile))
-            hIni:=hb_iniRead(cIniFile,.T.)// .T. = load all keys in MixedCase,redundant as it is default,but to remember
-        endif
-
-        // Now read changes from ini file and modify only admited keys
-        if (!Empty(hIni))
-            for each cSection in hIni:Keys
-                cSection:=Upper(cSection)
-                if (cSection$hDefault)
-                    hSect:=hIni[cSection]
-                    if (HB_ISHASH(hSect))
-                        for each cKey in hSect:Keys
-                            // Please,below check values MUST be uppercase
-                            if ((cKey:=Upper(cKey))$hDefault[cSection]) // force cKey to be uppercase
-                                if ((nPos:=hb_HScan(hSect,{|k|Upper(k)==cKey}))>0)
-                                    cVal:=hb_HValueAt(hSect,nPos)
-                                    switch cSection
-                                    case "HTTPSERVER"
-                                        if (cKey=="PORT")
-                                            xVal:=Val(cVal)
-                                        else
-                                            xVal:=cVal
-                                        endif
-                                        exit
-                                    case "LMSTUDIO"
-                                        if (cKey=="PORT")
-                                            xVal:=Val(cVal)
-                                        else
-                                            xVal:=cVal
-                                        endif
-                                        exit
-                                    otherwise
-                                        xVal:=cVal
-                                    end switch
-                                    if (xVal!=NIL)
-                                        hDefault[cSection][cKey]:=xVal
-                                    endif
-                                endif
-                            endif
-                        next cKey
-                    endif
-                endif
-            next cSection
-        endif
-    endif
-
-   return(hDefault)
 
 //----------------------------------------------------------------------------//
 /*
