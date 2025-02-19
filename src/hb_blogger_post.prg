@@ -262,7 +262,7 @@ static function GetNews(lSanitizedata as logical,cFrom as character,cTo as chara
                 nArticle:=hArticle:__enumIndex()
                 hb_HSet(hArticle,"sourceIndex",nArticle)
                 #pragma __cstream|cPrompt:=%s
-Given individual JSON objects representing news articles in Portuguese, determine if each article is related to technology. Use the title to identify technology-related content, such as topics on computing, software, devices, or modern technologies. For each article, respond only with true if it is related to technology or false if it is not. Maintain the same evaluation criteria for all responses.:
+Given individual JSON objects representing news articles in Portuguese,determine if each article is related to technology. Use the title to identify technology-related content,such as topics on computing,software,devices,or modern technologies. For each article,respond only with true if it is related to technology or false if it is not. Maintain the same evaluation criteria for all responses.:
                 #pragma __endtext
                 cJSONArticle:=hb_JSONEncode(hArticle)
                 cPrompt+=" ```json"+s_cEOL+cJSONArticle+s_cEOL+"```"
@@ -741,10 +741,10 @@ method Send(cPrompt as character) class TDeepSeek
                 ::cResponse:=allTrim(SubStr(::cResponse,1,Len(::cResponse)-3))
             endif
         else
-            ::cResponse:="Error code " + Str(::nError)
+            ::cResponse:="Error code "+Str(::nError)
         endif
     else
-        ::cResponse:="Error code " + Str(::nError)
+        ::cResponse:="Error code "+Str(::nError)
     endif
 
     return(::cResponse)
@@ -785,10 +785,10 @@ method GetUserBalance() class TDeepSeek
         if (::nError==HB_CURLE_OK)
             ::cResponse:=curl_easy_dl_buff_get(phCurl)
         else
-            ::cResponse:="Error code " + Str(::nError)
+            ::cResponse:="Error code "+Str(::nError)
         endif
     else
-        ::cResponse:="Error code " + Str(::nError)
+        ::cResponse:="Error code "+Str(::nError)
     endif
 
     curl_easy_cleanup(phCurl)
@@ -797,29 +797,72 @@ method GetUserBalance() class TDeepSeek
 
 static procedure ShowSubHelp(xLine as anytype,/*@*/nMode as numeric,nIndent as numeric,n as numeric)
 
-   DO CASE
-      CASE xLine == NIL
-      CASE HB_ISNUMERIC( xLine )
-         nMode := xLine
-      CASE HB_ISEVALITEM( xLine )
-         Eval( xLine )
-      CASE HB_ISARRAY( xLine )
-         IF nMode == 2
-            OutStd( Space( nIndent ) + Space( 2 ) )
-         ENDIF
-         AEval( xLine, {| x, n | ShowSubHelp( x, @nMode, nIndent + 2, n ) } )
-         IF nMode == 2
-            OutStd( s_cEOL )
-         ENDIF
-      OTHERWISE
-         DO CASE
-            CASE nMode == 1 ; OutStd( Space( nIndent ) + xLine + s_cEOL )
-            CASE nMode == 2 ; OutStd( iif( n > 1, ", ", "" ) + xLine )
-            OTHERWISE       ; OutStd( "(" + hb_ntos( nMode ) + ") " + xLine + s_cEOL )
-         ENDCASE
-   ENDCASE
+    local cKey as character
+    local cVal as character
+    local cSection as character
 
-   RETURN
+    local hSect as hash
+
+    local nPos as numeric
+
+    local xVal as anytype
+
+    do case
+    case xLine==NIL
+    case HB_ISNUMERIC(xLine)
+        nMode:=xLine
+    case HB_ISEVALITEM(xLine)
+        Eval(xLine)
+    case HB_ISARRAY(xLine)
+        if (nMode==2)
+            OutStd(Space(nIndent)+Space(2))
+        endif
+        AEval(xLine,{| x,n | ShowSubHelp(x,@nMode,nIndent+2,n) })
+        if (nMode==2)
+            OutStd(s_cEOL)
+        endif
+    case HB_ISHASH(xLine)
+        if (nMode==2)
+            OutStd(Space(nIndent)+Space(2))
+        endif
+        for each cSection in xLine:Keys
+            cSection:=Upper(cSection)
+            ShowSubHelp("["+cSection+"]",@nMode,nIndent+2,n)
+            hSect:=xLine[cSection]
+            if (HB_ISHASH(hSect))
+                for each cKey in hSect:Keys
+                    cKey:=Upper(cKey)
+                    if ((nPos:=hb_HScan(hSect,{|k|Upper(k)==cKey}))>0)
+                        cVal:=hb_HValueAt(hSect,nPos)
+                        xVal:=cVal
+                        if (xVal!=NIL)
+                            if (valType(xVal)=="N")
+                                ShowSubHelp(cKey+"="+hb_NToC(xVal),@nMode,nIndent+4,n)
+                            else
+                                ShowSubHelp(cKey+"="+xVal,@nMode,nIndent+4,n)
+                            endif
+                        endif
+                    endif
+                next cKey
+            endif
+        next cSection
+        if (nMode==2)
+            OutStd(s_cEOL)
+        endif
+    otherwise
+        switch nMode
+            case 1
+                OutStd(Space(nIndent)+xLine+s_cEOL)
+                exit
+            case 2
+                OutStd(iif(n > 1,",","")+xLine)
+                exit
+            otherwise
+                OutStd("("+hb_ntos(nMode)+") "+xLine+s_cEOL)
+        end switch
+    endcase
+
+    return
 
 static function HBRawVersion()
    return(;
@@ -841,7 +884,7 @@ static procedure ShowHelp(cExtraMessage as character,aArgs as array)
       aHelp:={;
          cExtraMessage;
          ,"hb_blogger_post ("+ExeName()+") "+HBRawVersion();
-         ,"Copyright (c) 2024-"+hb_NToS(Year(Date()))+", "+hb_Version(HB_VERSION_URL_BASE);
+         ,"Copyright (c) 2024-"+hb_NToS(Year(Date()))+","+hb_Version(HB_VERSION_URL_BASE);
          ,"";
          ,"Syntax:";
          ,"";
@@ -850,14 +893,14 @@ static procedure ShowHelp(cExtraMessage as character,aArgs as array)
          ,"Options:";
          ,{;
              "-h or --help    Show this help screen";
-            ,"-sanitize       Filter the JSON, keeping only technology-related information";
+            ,"-sanitize       Filter the JSON,keeping only technology-related information";
             ,"-from=<date>    Specify the start date [yyyy-mm-dd]";
             ,"-to=<date>      Specify the end date [yyyy-mm-dd]";
          };
          ,"";
-         ,"Ini:";
+         ,"Ini Config Options:";
          ,{;
-            hb_JSONEncode(ParseIni(.T.),.T.);
+            ParseIni(.T.);
          };
          ,"";
       }
@@ -890,7 +933,7 @@ static function ParseIni(lDefaultOnly as logical)
     hb_default(@lDefaultOnly,.F.)
 
     // Define here what attributes we can have in ini config file and their defaults
-    // Please add all keys in uppercase. hDefaults is Case Insensitive
+    // Please add all keys in uppercase. hDefaults is case Insensitive
     hDefault:={;
          "MAIN" => { => };
         ,"NEWSAPI" => {;
@@ -926,7 +969,7 @@ static function ParseIni(lDefaultOnly as logical)
 
         cIniFile:=hb_FNameExtSet(ExeName(),".ini")
         if (hb_FileExists(cIniFile))
-            hIni:=hb_iniRead(cIniFile,.T.)// .T. = load all keys in MixedCase, redundant as it is default, but to remember
+            hIni:=hb_iniRead(cIniFile,.T.)// .T. = load all keys in MixedCase,redundant as it is default,but to remember
         endif
 
         // Now read changes from ini file and modify only admited keys
@@ -937,7 +980,7 @@ static function ParseIni(lDefaultOnly as logical)
                     hSect:=hIni[cSection]
                     if (HB_ISHASH(hSect))
                         for each cKey in hSect:Keys
-                            // Please, below check values MUST be uppercase
+                            // Please,below check values MUST be uppercase
                             if ((cKey:=Upper(cKey))$hDefault[cSection]) // force cKey to be uppercase
                                 if ((nPos:=hb_HScan(hSect,{|k|Upper(k)==cKey}))>0)
                                     cVal:=hb_HValueAt(hSect,nPos)
