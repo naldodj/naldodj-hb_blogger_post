@@ -35,21 +35,25 @@ REQUEST HB_CODEPAGE_UTF8EX
 #define SW_SHOWNA           8
 #define SW_RESTORE          9
 
+static s_cEOL as character
+
 // Defina suas credenciais e chaves (substitua pelos seus valores)
-static cNewsApiKey as character // API key para o serviço de notícias
-static cBloggerID as character // ID do seu blog no Blogger
-static cBloggerAccessToken as character // Blogger API Key
+static s_cNewsApiKey as character // API key para o serviço de notícias
+static s_cBloggerID as character // ID do seu blog no Blogger
+static s_cBloggerAccessToken as character // Blogger API Key
 
 // Variáveis globais para OAuth2
-static cClientID as character
-static cClientSecret as character
-static cRedirectURI as character
-static cAuthURL as character
-static cTokenURL as character
-static cScope as character
+static s_cScope as character
+static s_cAuthURL as character
+static s_cTokenURL as character
+static s_cClientID as character
 
-static cEOL as character
+static s_cClientSecret as character
+static s_cRedirectURI as character
 
+static s_hIni as hash
+
+//Variaveis para UHttpdNew
 MEMVAR server,get,post,cookie,session
 
 //---------------------------------------------------------------------
@@ -70,7 +74,7 @@ procedure Main(...)
     local cNewsJSON as character
 
     local lSuccess as logical:=.F.
-    local lSanitizeData as logical
+    local lSanitizedata as logical
 
     local idx as numeric
 
@@ -79,7 +83,8 @@ procedure Main(...)
         AltD()          // Invokes the debugger
     #endif
 
-    cEOL:=hb_eol()
+    s_cEOL:=hb_eol()
+
     hb_setCodePage("UTF8")
     hb_cdpSelect("UTF8EX")
 
@@ -128,9 +133,11 @@ procedure Main(...)
     hb_Default(@cFrom,hb_DToC(Date(),"yyyy-mm-dd"))
     hb_Default(@cTo,hb_DToC(Date(),"yyyy-mm-dd"))
 
+    s_hIni:=ParseIni()
+
     begin sequence
 
-        cNewsApiKey:=GetEnv("NEWS_API_KEY") // API key para o serviço de notícias
+        s_cNewsApiKey:=GetEnv("NEWS_API_KEY") // API key para o serviço de notícias
         // 1. Buscar notícias de tecnologia
         cNewsJSON:=GetNews(lSanitizeData,cFrom,cTo)
 
@@ -159,7 +166,7 @@ procedure Main(...)
 // Função: GetNews()
 // Usa TIPClientHTTP para efetuar uma requisição GET à API de notícias.
 //---------------------------------------------------------------------
-static function GetNews(lSanitizeData as logical,cFrom as character,cTo as character)
+static function GetNews(lSanitizedata as logical,cFrom as character,cTo as character)
 
     local aNewsTech as array
 
@@ -180,7 +187,7 @@ static function GetNews(lSanitizeData as logical,cFrom as character,cTo as chara
     local oHTTP as object
     local oTDeepSeek as object
 
-    cURL:="https://newsapi.org/v2/everything/"
+    cURL:=s_hIni["NEWSAPI"]["URL"]
 
     //FixMe!
     cURL:=strTran(cURL,"https","http")
@@ -189,19 +196,19 @@ static function GetNews(lSanitizeData as logical,cFrom as character,cTo as chara
     oURL:=TUrl():New(cURL)
     oHTTP:=TIPClientHTTP():New(oURL)
     oHTTP:hFields["Content-Type"]:="application/JSON"
-    oHTTP:hFields["X-Api-Key"]:=cNewsApiKey
+    oHTTP:hFields["X-Api-Key"]:=s_cNewsApiKey
 
     /* build the search query and add it to the TUrl object */
     oHTTP:oURL:addGetForm(;
         {;
-            "q" => "tecnologia";
-           ,"sortBy" => "popularity";
-           ,"language" => "pt";
+            "q" => s_hIni["NEWSAPI"]["QUERY"];
+           ,"sortBy" => s_hIni["NEWSAPI"]["SORTBY"];
+           ,"language" => s_hIni["NEWSAPI"]["LANGUAGE"];
            ,"from" => cFrom;
            ,"to" => cTo;
-           ,"apiKey" => cNewsApiKey;
+           ,"apiKey" => s_cNewsApiKey;
         };
- )
+    )
 
     /* Connect to the HTTP server */
     oHTTP:nConnTimeout:=2000 /* 20000 */
@@ -243,8 +250,8 @@ static function GetNews(lSanitizeData as logical,cFrom as character,cTo as chara
             cReponseUserBalance:=oTDeepSeek:GetUserBalance()
             hb_JSONDecode(cReponseUserBalance,@hReponseUserBalance)
             if (!((valType(hReponseUserBalance)=="H").and.(hb_HHasKey(hReponseUserBalance,"is_available")).and.(hReponseUserBalance["is_available"])))
-                oTDeepSeek:cUrl:="http://localhost:1234/v1/chat/completions"
-                oTDeepSeek:cModel:="deepseek-r1-distill-qwen-7b"
+                oTDeepSeek:cUrl:=s_hIni["LMSTUDIO"]["URL"]+":"+hb_NToC(s_hIni["LMSTUDIO"]["PORT"])+"/v1/chat/completions"
+                oTDeepSeek:cModel:=s_hIni["LMSTUDIO"]["MODEL"]
             endif
             aNewsTech:=Array(0)
             for each hArticle in hNews["articles"]
@@ -254,7 +261,7 @@ static function GetNews(lSanitizeData as logical,cFrom as character,cTo as chara
 Given individual JSON objects representing news articles in Portuguese, determine if each article is related to technology. Use the title to identify technology-related content, such as topics on computing, software, devices, or modern technologies. For each article, respond only with true if it is related to technology or false if it is not. Maintain the same evaluation criteria for all responses.:
                 #pragma __endtext
                 cJSONArticle:=hb_JSONEncode(hArticle)
-                cPrompt+=" ```json"+cEOL+cJSONArticle+cEOL+"```"
+                cPrompt+=" ```json"+s_cEOL+cJSONArticle+s_cEOL+"```"
                 oTDeepSeek:Send(cPrompt)
                 cResponse:=oTDeepSeek:GetValue()
                 lNewsTech:=("true"==Right(cResponse,4))
@@ -288,7 +295,6 @@ static function JSONToMarkdown(cJSON as character)
     local cMarkdown as character:=""
 
     local hJSON as hash
-
     local hArticle as hash
 
     local i as numeric
@@ -328,32 +334,32 @@ static function JSONToMarkdown(cJSON as character)
             hArticle:=aArticles[i]
 
             // Título da notícia
-            cMarkdown+="# "+if(!Empty(hArticle["title"]),hArticle["title"],hArticle["description"])+cEOL
+            cMarkdown+="# "+if(!Empty(hArticle["title"]),hArticle["title"],hArticle["description"])+s_cEOL
 
             // Fonte e autor
-            cMarkdown+="**Fonte:** "+hArticle["source"]["name"]+cEOL
+            cMarkdown+="**Fonte:** "+hArticle["source"]["name"]+s_cEOL
             if (!Empty(hArticle["author"]))
-                cMarkdown+="**Autor:** "+hArticle["author"]+cEOL
+                cMarkdown+="**Autor:** "+hArticle["author"]+s_cEOL
             endif
 
-            // Data de publicação
-            cMarkdown+="**Publicado em:** "+hArticle["publishedAt"]+cEOL+cEOL
+            // data de publicação
+            cMarkdown+="**Publicado em:** "+hArticle["publishedAt"]+s_cEOL+s_cEOL
 
             // Imagem (se disponível)
             if (!Empty(hArticle["urlToImage"]))
-                cMarkdown+="![Imagem]("+hArticle["urlToImage"]+")"+cEOL+cEOL
+                cMarkdown+="![Imagem]("+hArticle["urlToImage"]+")"+s_cEOL+s_cEOL
             endif
 
             // Descrição (citação)
             if (!Empty(hArticle["description"]))
-                cMarkdown+="> "+hArticle["description"]+cEOL+cEOL
+                cMarkdown+="> "+hArticle["description"]+s_cEOL+s_cEOL
             endif
 
             // Link para a notícia completa
-            cMarkdown+="[Leia mais]("+hArticle["url"]+")"+cEOL+cEOL
+            cMarkdown+="[Leia mais]("+hArticle["url"]+")"+s_cEOL+s_cEOL
 
             // Separador entre notícias
-            cMarkdown+="---"+cEOL+cEOL
+            cMarkdown+="---"+s_cEOL+s_cEOL
 
         next i
 
@@ -369,8 +375,8 @@ static function ConvertMarkdownToHtml(cMarkdown as character)
 #pragma __cstream|cNewMarkDown:=%s
 <div class="separator" style="clear: both;"><a href="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgKfeXkOvdidB4y-2xSljMmUFRf1l432sFeW5_1prYw2SnGtOvI2HtkDBm-aRNHt5wUGkjcEGtVrWYKGegXsmoX84C1C6V-aWJoj0jY49MwAiR6Jxecyzp1Sfgj9-V64KUCAQ2bTt3kFHEP5px2eoWeXwV5-nZ6YvXd8nEfMmaK-c4Mo0JAgqCDg33Kxo8/s1792/blacktdn_new_banner.webp" style="display: block; padding: 1em 0; text-align: center; "><img alt="" border="0" width="400" data-original-height="1024" data-original-width="1792" src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgKfeXkOvdidB4y-2xSljMmUFRf1l432sFeW5_1prYw2SnGtOvI2HtkDBm-aRNHt5wUGkjcEGtVrWYKGegXsmoX84C1C6V-aWJoj0jY49MwAiR6Jxecyzp1Sfgj9-V64KUCAQ2bTt3kFHEP5px2eoWeXwV5-nZ6YvXd8nEfMmaK-c4Mo0JAgqCDg33Kxo8/s400/blacktdn_new_banner.webp"/></a></div>
 #pragma __endtext
-   cNewMarkDown+=cEOL
-   cNewMarkDown+='<pre class="markdown">_Créditos das imagens: ChatGPT'+cEOL+cMarkdown+cEOL+'</pre>'
+   cNewMarkDown+=s_cEOL
+   cNewMarkDown+='<pre class="markdown">_Créditos das imagens: ChatGPT'+s_cEOL+cMarkdown+s_cEOL+'</pre>'
    return(cNewMarkDown) as character
 
 //---------------------------------------------------------------------
@@ -380,25 +386,25 @@ static function ConvertMarkdownToHtml(cMarkdown as character)
 static function PublishToBlogger(cTitle as character,cContent as character)
 
     local cURL as character
-    local cAccessToken  as character
-    local cJSONData as character
+    local cJSONdata as character
     local cResponse as character
+    local cAccessToken  as character
 
-    local hJSONData as hash
+    local hJSONdata as hash
 
     local oURL as object
     local oHTTP as object
 
-    cBloggerID:=GetEnv("BLOGGER_ID") // ID do seu blog no Blogger
-    cBloggerAccessToken:=GetEnv("BLOGGER_API_KEY") // Blogger API Key
+    s_cBloggerID:=GetEnv("BLOGGER_ID") // ID do seu blog no Blogger
+    s_cBloggerAccessToken:=GetEnv("BLOGGER_API_KEY") // Blogger API Key
 
     // Variáveis globais para OAuth2
-    cClientID:=GetEnv("GOOGLE_CLIENT_ID")
-    cClientSecret:=GetEnv("GOOGLE_CLIENT_SECRET")
-    cRedirectURI:="http://localhost:8002/oauth2callback"
-    cAuthURL:="https://accounts.google.com/o/oauth2/v2/auth"
-    cTokenURL:="https://accounts.google.com/o/oauth2/token"
-    cScope:="https://www.googleapis.com/auth/blogger"
+    s_cClientID:=GetEnv("GOOGLE_CLIENT_ID")
+    s_cClientSecret:=GetEnv("GOOGLE_CLIENT_SECRET")
+    s_cRedirectURI:="http://localhost:8002/oauth2callback"
+    s_cAuthURL:="https://accounts.google.com/o/oauth2/v2/auth"
+    s_cTokenURL:="https://accounts.google.com/o/oauth2/token"
+    s_cScope:="https://www.googleapis.com/auth/blogger"
 
     cAccessToken:=GetOAuth2Token() // Obter token via OAuth2
 
@@ -406,13 +412,13 @@ static function PublishToBlogger(cTitle as character,cContent as character)
 
         // Constrói a URL do endpoint de inserção de posts do Blogger
         //https://developers.google.com/blogger/docs/3.0/reference/posts?hl=pt-br#resource
-        cURL:="https://www.googleapis.com/blogger/v3/blogs/"+cBloggerID+"/posts?isDraft=true"
+        cURL:="https://www.googleapis.com/blogger/v3/blogs/"+s_cBloggerID+"/posts?isDraft=true"
 
         // Prepara o corpo JSON da requisição conforme a documentação do Blogger API v3
         hJSONData:={;
                         "kind" => "blogger#post";
                        ,"blog" => {;
-                            "id" => cBloggerID;
+                            "id" => s_cBloggerID;
                         };
                        ,"title" => cTitle;
                        ,"content" => cContent;
@@ -456,12 +462,22 @@ static function GetOAuth2Token()
 
     local lHTTPServer as logical
 
-    local oLogError,oLogAccess as object
+    local oLogError as object
+    local oLogAccess as object
+
+    local oTHtml as object
+    local oTHtmlForm as object
     local oHTTPServer as object
 
-    ? "http://localhost:8002/"
+    ? s_hIni["HTTPSERVER"]["URL"]+":"+hb_NToC(s_hIni["HTTPSERVER"]["PORT"])
     *hb_idleSleep(.1)
-    ShellExecuteEx(NIL,"open",".\tpl\hb_blogger_post.html","",NIL,SW_SHOWNORMAL)
+
+    oTHtml:=THtmlDocument():New(hb_MemoRead(s_hIni["HTTPSERVER"]["MAINPAGE"]))
+    oTHtmlForm:=oTHtml:Body:Form
+    oTHtmlForm:attr:="action='"+s_hIni["HTTPSERVER"]["URL"]+":"+hb_NToC(s_hIni["HTTPSERVER"]["PORT"])+"/auth'"
+    oTHtml:WriteFile(s_hIni["HTTPSERVER"]["MAINPAGE"])
+
+    ShellExecuteEx(NIL,"open",s_hIni["HTTPSERVER"]["MAINPAGE"],"",NIL,SW_SHOWNORMAL)
 
     oLogError:=UHttpdLog():New("hb_blogger_post_error.log")
     oLogAccess:=UHttpdLog():New("hb_blogger_post_access.log")
@@ -475,10 +491,10 @@ static function GetOAuth2Token()
     lHTTPServer:=oHTTPServer:Run(;
         {;
              "FirewallFilter"   => "";
-            ,"LogAccess"        => {| m | oLogAccess:Add(m+cEOL) };
-            ,"LogError"         => {| m | oLogError:Add(m+cEOL) };
+            ,"LogAccess"        => {| m | oLogAccess:Add(m+s_cEOL) };
+            ,"LogError"         => {| m | oLogError:Add(m+s_cEOL) };
             ,"Trace"            => {| ... | QOut(...) };
-            ,"Port"             => 8002;
+            ,"Port"             => s_hIni["HTTPSERVER"]["PORT"];
             ,"Idle"             => {|o|iif(hb_FileExists(".uhttpd.stop"),(fErase(".uhttpd.stop"),o:Stop()),NIL)};
             ,"SSL"              => .F.;
             ,"Mount"            => {;
@@ -488,7 +504,7 @@ static function GetOAuth2Token()
                 ,"/"               => {||URedirect("/auth")};
             };
         };
- )
+    )
 
     oLogError:Close()
     oLogAccess:Close()
@@ -512,15 +528,17 @@ static function GetOAuth2Token()
 
 static function AuthHandler()
 
+    local cKey as character
+    local cValue as character
     local cParams as character:=""
-    local cKey,cValue as character
+
     local hkey as hash
     local hkeys as hash:={;
-         "redirect_uri"   => cRedirectURI;
+         "redirect_uri"   => s_cRedirectURI;
         ,"prompt"        => "consent";
         ,"response_type" => "code";
-        ,"client_id"     => cClientID;
-        ,"scope"         => cScope;
+        ,"client_id"     => s_cClientID;
+        ,"scope"         => s_cScope;
     }
 
     for each hkey in hkeys
@@ -537,13 +555,14 @@ static function AuthHandler()
     endif
 
     USessionStart()
-    URedirect(cAuthURL+"?"+cParams) // Redireciona o navegador
+    URedirect(s_cAuthURL+"?"+cParams) // Redireciona o navegador
 
 return(.T.)
 
 static function CallbackHandler()
 
-    local cAuthCode,cAccessToken as character
+    local cAuthCode as character
+    local cAccessToken as character
 
     if (hb_HHasKey(get,"code"))
         cAuthCode:=get["code"]
@@ -557,9 +576,11 @@ return({"AccessToken"=>cAccessToken})
 
 static function ExchangeCodeForToken(cAuthCode as character)
 
-    local cTokenResponse,cAccessToken
+    local cAccessToken as character
+    local cTokenResponse as character
 
-    local hkeys,hJSONResponse as hash
+    local hkeys as hash
+    local hJSONResponse as hash
 
     local oURL as object
     local oHTTP as object
@@ -567,14 +588,14 @@ static function ExchangeCodeForToken(cAuthCode as character)
     // 2. Trocar código por token de acesso
     hkeys:={;
         "code"          => cAuthCode,;
-        "redirect_uri"  => cRedirectURI,;
-        "client_id"     => cClientID,;
-        "client_secret" => cClientSecret,;
+        "redirect_uri"  => s_cRedirectURI,;
+        "client_id"     => s_cClientID,;
+        "client_secret" => s_cClientSecret,;
         "grant_type"    => "authorization_code";
     }
 
     // Cria o objeto TIPClientHTTP para a URL do Blogger
-    oURL:=TUrl():New(cTokenURL)
+    oURL:=TUrl():New(s_cTokenURL)
     oHTTP:=TIPClientHTTP():New(oURL)
     oHTTP:hFields["Content-Type"]:="application/x-www-form-urlencoded"
 
@@ -601,45 +622,48 @@ return(cAccessToken)
 
 // Based on https://api-docs.deepseek.com
 // Remember to register in https://deepseek.com/ and get your API key
-// Class TDeepSeek for Harbour
+// class TDeepSeek for Harbour
 //----------------------------------------------------------------------------//
-CLASS TDeepSeek
+class TDeepSeek
 
-    DATA cKey as character INIT ""
-    DATA cModel as character INIT "deepseek-r1"
-    DATA cResponse as character
-    DATA cUrl as character
-    DATA phCurl as pointer
+    data cUrl as character
+    data cKey as character init ""
+    data cModel as character init "deepseek-r1"
+    data cResponse as character
 
-    DATA nError as numeric INIT 0
-    DATA nHttpCode  as numeric INIT 0
+    data phCurl as pointer
 
-    METHOD New(cKey as character,cModel as character)
-    METHOD Send(cPrompt as character)
-    METHOD End()
-    METHOD GetValue(cHKey as character)
-    METHOD GetUserBalance()
+    data nError as numeric init 0
+    data nHttpCode as numeric init 0
 
-ENDCLASS
+    method New(cKey as character,cModel as character)
+    method Send(cPrompt as character)
+    method End()
+    method GetValue(cHKey as character)
+    method GetUserBalance()
+
+endclass
 //----------------------------------------------------------------------------//
-METHOD New(cKey as character,cModel as character) CLASS TDeepSeek
-    if Empty(cKey as character)
+method New(cKey as character,cModel as character) class TDeepSeek
+    if (Empty(cKey))
         ::cKey:=GetEnv("DEEPSEEK_API_KEY")
     else
         ::cKey:=cKey
     endif
     if (!Empty(cModel))
         ::cModel:=cModel
+    else
+        ::cModel:=s_hIni["DEEPSEEK"]["MODEL"]
     endif
-    ::cUrl:="https://api.deepseek.com/chat/completions"
+    ::cUrl:=s_hIni["DEEPSEEK"]["URL"]
     ::phCurl:=curl_easy_init()
-    return(Self)
+    return(self)
 //----------------------------------------------------------------------------//
-METHOD End() CLASS TDeepSeek
+method End() class TDeepSeek
     curl_easy_cleanup(::phCurl)
     return(nil)
 //----------------------------------------------------------------------------//
-METHOD GetValue(cHKey as character) CLASS TDeepSeek
+method GetValue(cHKey as character) class TDeepSeek
     local aKeys as array:=hb_AParams()
     local cKey as character
     local uValue:=hb_JSONDecode(::cResponse)
@@ -650,7 +674,7 @@ METHOD GetValue(cHKey as character) CLASS TDeepSeek
         CATCH
             TRY
                 uValue:=uValue["error"]["message"]
-            CATCH 
+            CATCH
                 uValue:=uValue
             END
         END
@@ -668,7 +692,7 @@ METHOD GetValue(cHKey as character) CLASS TDeepSeek
     END
     return(uValue)
 //----------------------------------------------------------------------------//
-METHOD Send(cPrompt as character) CLASS TDeepSeek
+method Send(cPrompt as character) class TDeepSeek
 
     local aHeaders as array
 
@@ -696,14 +720,13 @@ METHOD Send(cPrompt as character) CLASS TDeepSeek
     hMessage1["content"]:="You are a helpfull assistant."
     hMessage2["role"]:="user"
     hMessage2["content"]:=cPrompt
-    hRequest["messages"]:={ hMessage1,hMessage2 }
+    hRequest["messages"]:={hMessage1,hMessage2}
     hRequest["stream"]:=.F.
 
     cJSON:=hb_JSONEncode(hRequest)
     curl_easy_setopt(::phCurl,HB_CURLOPT_POSTFIELDS,cJSON)
 
     ::nError:=curl_easy_perform(::phCurl)
-
     if (::nError==HB_CURLE_OK)
         curl_easy_getinfo(::phCurl,HB_CURLINFO_RESPONSE_CODE,@::nHttpCode)
         if (::nError==HB_CURLE_OK)
@@ -721,11 +744,11 @@ METHOD Send(cPrompt as character) CLASS TDeepSeek
 
     return(::cResponse)
 //----------------------------------------------------------------------------//
-METHOD GetUserBalance() CLASS TDeepSeek
+method GetUserBalance() class TDeepSeek
 
     local aHeaders as array
 
-    local cURL as character :="https://api.deepseek.com/user/balance"
+    local cURL as character:=s_hIni["DEEPSEEK"]["URLBALANCE"]
     local phCurl as pointer:=curl_easy_init()
 
     aHeaders:={"Content-Type: application/JSON","Authorization: Bearer "+::cKey}
@@ -759,7 +782,7 @@ METHOD GetUserBalance() CLASS TDeepSeek
 
     curl_easy_cleanup(phCurl)
 
-    return ::cResponse
+    return(::cResponse)
 
 static procedure ShowSubHelp(xLine as anytype,/*@*/nMode as numeric,nIndent as numeric,n as numeric)
 
@@ -775,13 +798,13 @@ static procedure ShowSubHelp(xLine as anytype,/*@*/nMode as numeric,nIndent as n
          ENDIF
          AEval( xLine, {| x, n | ShowSubHelp( x, @nMode, nIndent + 2, n ) } )
          IF nMode == 2
-            OutStd( hb_eol() )
+            OutStd( s_cEOL )
          ENDIF
       OTHERWISE
          DO CASE
-            CASE nMode == 1 ; OutStd( Space( nIndent ) + xLine + hb_eol() )
+            CASE nMode == 1 ; OutStd( Space( nIndent ) + xLine + s_cEOL )
             CASE nMode == 2 ; OutStd( iif( n > 1, ", ", "" ) + xLine )
-            OTHERWISE       ; OutStd( "(" + hb_ntos( nMode ) + ") " + xLine + hb_eol() )
+            OTHERWISE       ; OutStd( "(" + hb_ntos( nMode ) + ") " + xLine + s_cEOL )
          ENDCASE
    ENDCASE
 
@@ -789,7 +812,7 @@ static procedure ShowSubHelp(xLine as anytype,/*@*/nMode as numeric,nIndent as n
 
 static function HBRawVersion()
    return(;
-       hb_StrFormat( "%d.%d.%d%s (%s) (%s)";
+       hb_StrFormat("%d.%d.%d%s (%s) (%s)";
       ,hb_Version(HB_VERSION_MAJOR);
       ,hb_Version(HB_VERSION_MINOR);
       ,hb_Version(HB_VERSION_RELEASE);
@@ -833,7 +856,99 @@ static procedure ShowHelp(cExtraMessage as character,aArgs as array)
    return
 
 //----------------------------------------------------------------------------//
+static function ParseIni()
 
+    local cKey as character
+    local cVal as character
+    local cSection as character
+    local cIniFile as character
+
+    local hIni as hash
+    local hSect as hash
+    local hDefault as hash
+
+    local nPos as numeric
+
+    local xVal as anytype
+
+    cIniFile:=hb_FNameExtSet(ExeName(),".ini")
+    if (hb_FileExists(cIniFile))
+        hIni:=hb_iniRead(cIniFile,.T.)// .T. = load all keys in MixedCase, redundant as it is default, but to remember
+    endif
+
+    // Define here what attributes we can have in ini config file and their defaults
+    // Please add all keys in uppercase. hDefaults is Case Insensitive
+    hDefault:={;
+         "MAIN" => { => };
+        ,"NEWSAPI" => {;
+             "URL" => "https://newsapi.org/v2/everything/";
+            ,"QUERY" => "tecnologia";
+            ,"SORTBY" => "popularity";
+            ,"LANGUAGE" => "pt";
+        };
+        ,"HTTPSERVER"=> {;
+             "URL" => "http://127.0.0.1";
+            ,"PORT" => 8002;
+            ,"MAINPAGE" => ".\tpl\hb_blogger_post.html";
+        };
+        ,"DEEPSEEK" => {;
+             "URL" => "https://api.deepseek.com/chat/completions";
+            ,"URLBALANCE" => "https://api.deepseek.com/user/balance";
+            ,"MODEL" => "deepseek-r1";
+        };
+        ,"LMSTUDIO"=> {;
+             "URL" => "http://127.0.0.1";
+            ,"PORT" => 1234;
+            ,"MODEL" => "deepseek-r1-distill-qwen-7b";
+        };
+    }
+
+    hb_HCaseMatch(hDefault,.F.)
+
+    // Now read changes from ini file and modify only admited keys
+    if (!Empty(hIni))
+        for each cSection in hIni:Keys
+            cSection:=Upper(cSection)
+            if (cSection$hDefault)
+                hSect:=hIni[cSection]
+                if (HB_ISHASH(hSect))
+                    for each cKey in hSect:Keys
+                        // Please, below check values MUST be uppercase
+                        if ((cKey:=Upper(cKey))$hDefault[cSection]) // force cKey to be uppercase
+                            if ((nPos:=hb_HScan(hSect,{|k|Upper(k)==cKey}))>0)
+                                cVal:=hb_HValueAt(hSect,nPos)
+                                switch cSection
+                                case "HTTPSERVER"
+                                    if (cKey=="PORT")
+                                        xVal:=Val(cVal)
+                                    else
+                                        xVal:=cVal
+                                    endif
+                                    exit
+                                case "LMSTUDIO"
+                                    if (cKey=="PORT")
+                                        xVal:=Val(cVal)
+                                    else
+                                        xVal:=cVal
+                                    endif
+                                    exit
+                                otherwise
+                                    xVal:=cVal
+                                end switch
+                                if (xVal!=NIL)
+                                    hDefault[cSection][cKey]:=xVal
+                                endif
+                            endif
+                        endif
+                    next cKey
+                endif
+            endif
+        next cSection
+    endif
+
+   return(hDefault)
+
+//----------------------------------------------------------------------------//
 /*
  * C-level
 */
