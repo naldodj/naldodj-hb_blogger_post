@@ -405,7 +405,7 @@ static function PublishToBlogger(cTitle as character,cContent as character)
     // Variáveis globais para OAuth2
     s_cClientID:=GetEnv("GOOGLE_CLIENT_ID")
     s_cClientSecret:=GetEnv("GOOGLE_CLIENT_SECRET")
-    s_cRedirectURI:="http://localhost:8002/oauth2callback"
+    s_cRedirectURI:="http://localhost:"+hb_NToC(s_hIni["HTTPSERVER"]["PORT"])+"/oauth2callback"
     s_cAuthURL:="https://accounts.google.com/o/oauth2/v2/auth"
     s_cTokenURL:="https://accounts.google.com/o/oauth2/token"
     s_cScope:="https://www.googleapis.com/auth/blogger"
@@ -848,11 +848,16 @@ static procedure ShowHelp(cExtraMessage as character,aArgs as array)
          ,{ExeName()+" [options]"};
          ,"";
          ,"Options:";
-       ,{;
+         ,{;
              "-h or --help    Show this help screen";
             ,"-sanitize       Filter the JSON, keeping only technology-related information";
             ,"-from=<date>    Specify the start date [yyyy-mm-dd]";
             ,"-to=<date>      Specify the end date [yyyy-mm-dd]";
+         };
+         ,"";
+         ,"Ini:";
+         ,{;
+            hb_JSONEncode(ParseIni(.T.),.T.);
          };
          ,"";
       }
@@ -867,7 +872,7 @@ static procedure ShowHelp(cExtraMessage as character,aArgs as array)
    return
 
 //----------------------------------------------------------------------------//
-static function ParseIni()
+static function ParseIni(lDefaultOnly as logical)
 
     local cKey as character
     local cVal as character
@@ -882,10 +887,7 @@ static function ParseIni()
 
     local xVal as anytype
 
-    cIniFile:=hb_FNameExtSet(ExeName(),".ini")
-    if (hb_FileExists(cIniFile))
-        hIni:=hb_iniRead(cIniFile,.T.)// .T. = load all keys in MixedCase, redundant as it is default, but to remember
-    endif
+    hb_default(@lDefaultOnly,.F.)
 
     // Define here what attributes we can have in ini config file and their defaults
     // Please add all keys in uppercase. hDefaults is Case Insensitive
@@ -920,45 +922,53 @@ static function ParseIni()
 
     hb_HCaseMatch(hDefault,.F.)
 
-    // Now read changes from ini file and modify only admited keys
-    if (!Empty(hIni))
-        for each cSection in hIni:Keys
-            cSection:=Upper(cSection)
-            if (cSection$hDefault)
-                hSect:=hIni[cSection]
-                if (HB_ISHASH(hSect))
-                    for each cKey in hSect:Keys
-                        // Please, below check values MUST be uppercase
-                        if ((cKey:=Upper(cKey))$hDefault[cSection]) // force cKey to be uppercase
-                            if ((nPos:=hb_HScan(hSect,{|k|Upper(k)==cKey}))>0)
-                                cVal:=hb_HValueAt(hSect,nPos)
-                                switch cSection
-                                case "HTTPSERVER"
-                                    if (cKey=="PORT")
-                                        xVal:=Val(cVal)
-                                    else
+    if (!lDefaultOnly)
+
+        cIniFile:=hb_FNameExtSet(ExeName(),".ini")
+        if (hb_FileExists(cIniFile))
+            hIni:=hb_iniRead(cIniFile,.T.)// .T. = load all keys in MixedCase, redundant as it is default, but to remember
+        endif
+
+        // Now read changes from ini file and modify only admited keys
+        if (!Empty(hIni))
+            for each cSection in hIni:Keys
+                cSection:=Upper(cSection)
+                if (cSection$hDefault)
+                    hSect:=hIni[cSection]
+                    if (HB_ISHASH(hSect))
+                        for each cKey in hSect:Keys
+                            // Please, below check values MUST be uppercase
+                            if ((cKey:=Upper(cKey))$hDefault[cSection]) // force cKey to be uppercase
+                                if ((nPos:=hb_HScan(hSect,{|k|Upper(k)==cKey}))>0)
+                                    cVal:=hb_HValueAt(hSect,nPos)
+                                    switch cSection
+                                    case "HTTPSERVER"
+                                        if (cKey=="PORT")
+                                            xVal:=Val(cVal)
+                                        else
+                                            xVal:=cVal
+                                        endif
+                                        exit
+                                    case "LMSTUDIO"
+                                        if (cKey=="PORT")
+                                            xVal:=Val(cVal)
+                                        else
+                                            xVal:=cVal
+                                        endif
+                                        exit
+                                    otherwise
                                         xVal:=cVal
+                                    end switch
+                                    if (xVal!=NIL)
+                                        hDefault[cSection][cKey]:=xVal
                                     endif
-                                    exit
-                                case "LMSTUDIO"
-                                    if (cKey=="PORT")
-                                        xVal:=Val(cVal)
-                                    else
-                                        xVal:=cVal
-                                    endif
-                                    exit
-                                otherwise
-                                    xVal:=cVal
-                                end switch
-                                if (xVal!=NIL)
-                                    hDefault[cSection][cKey]:=xVal
                                 endif
                             endif
-                        endif
-                    next cKey
+                        next cKey
+                    endif
                 endif
-            endif
-        next cSection
+            next cSection
+        endif
     endif
 
    return(hDefault)
