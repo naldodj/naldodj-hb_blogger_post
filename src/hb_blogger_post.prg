@@ -557,7 +557,7 @@ static function AuthHandler()
     USessionStart()
     URedirect(s_cAuthURL+"?"+cParams) // Redireciona o navegador
 
-return(.T.)
+    return(.T.)
 
 static function CallbackHandler()
 
@@ -572,7 +572,7 @@ static function CallbackHandler()
 
    hb_MemoWrit(".uhttpd.stop","")
 
-return({"AccessToken"=>cAccessToken})
+    return({"AccessToken"=>cAccessToken})
 
 static function ExchangeCodeForToken(cAuthCode as character)
 
@@ -618,7 +618,7 @@ static function ExchangeCodeForToken(cAuthCode as character)
         QOut("Error:","oHTTP:Open()",oHTTP:LastErrorMessage())
     endif
 
-return(cAccessToken)
+    return(cAccessToken)
 
 // Based on https://api-docs.deepseek.com
 // Remember to register in https://deepseek.com/ and get your API key
