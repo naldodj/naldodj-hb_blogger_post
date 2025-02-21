@@ -183,7 +183,9 @@ static function ParseIni(lDefaultOnly as logical)
     // Define here what attributes we can have in ini config file and their defaults
     // Please add all keys in uppercase. hDefaults is case Insensitive
     hDefault:={;
-         "MAIN" => { => };
+         "MAIN" => {;
+            "SELECTED_AI" => "QWEN";
+         };
         ,"NEWSAPI" => {;
              "URL" => "https://newsapi.org";
             ,"PATH" => "/v2/everything/";
@@ -191,10 +193,15 @@ static function ParseIni(lDefaultOnly as logical)
             ,"SORTBY" => "popularity";
             ,"LANGUAGE" => "pt";
         };
-        ,"HTTPSERVER"=> {;
+        ,"HTTPSERVER" => {;
              "URL" => "http://127.0.0.1";
             ,"PORT" => 8002;
             ,"MAINPAGE" => ".\tpl\hb_blogger_post.html";
+        };
+        ,"QWEN" => {;
+             "URL" => "https://api.qwen.com";
+            ,"PATH" => "/v1/chat/completions";
+            ,"MODEL" => "qwen-7b";
         };
         ,"DEEPSEEK" => {;
              "URL" => "https://api.deepseek.com";
@@ -203,10 +210,19 @@ static function ParseIni(lDefaultOnly as logical)
             ,"PATHBALANCE" => "/user/balance";
             ,"MODEL" => "deepseek-r1";
         };
-        ,"LMSTUDIO"=> {;
+        ,"LMSTUDIO" => {;
              "URL" => "http://127.0.0.1";
             ,"PORT" => 1234;
             ,"PATH" => "/v1/chat/completions";
+            ,"MODEL_QWEN" => "LMSTUDIO_QWEN";
+            ,"MODEL_DEEPSEEK" => "LMSTUDIO_DEEPSEEK";
+        };
+        ,"LMSTUDIO_QWEN" => {;
+             "PATH" => "/v1/chat/completions";
+            ,"MODEL" => "qwen2.5-7b-instruct-1m";
+        };
+        ,"LMSTUDIO_DEEPSEEK" => {;
+             "PATH" => "/v1/chat/completions";
             ,"MODEL" => "deepseek-r1-distill-qwen-7b";
         };
     }
@@ -275,6 +291,7 @@ static function GetNews(lSanitizedata as logical,cFrom as character,cTo as chara
     local cURL as character
     local cPrompt as character
     local cResponse as character
+    local cResponseNew as character
     local cJSONArticle as character
     local cReponseUserBalance as character
 
@@ -287,7 +304,7 @@ static function GetNews(lSanitizedata as logical,cFrom as character,cTo as chara
 
     local oURL as object
     local oHTTP as object
-    local oTDeepSeek as object
+    local oTApiAI as object
 
     cURL:=s_hIni["NEWSAPI"]["URL"]
     cURL+=s_hIni["NEWSAPI"]["PATH"]
@@ -314,7 +331,7 @@ static function GetNews(lSanitizedata as logical,cFrom as character,cTo as chara
     )
 
     /* Connect to the HTTP server */
-    oHTTP:nConnTimeout:=2000 /* 20000 */
+    oHTTP:nConnTimeout:=15000
 
     ? "Connecting to",oURL:cProto+"://"+oURL:cServer+oURL:cPath+"?"+oURL:cQuery
 
@@ -333,9 +350,9 @@ static function GetNews(lSanitizedata as logical,cFrom as character,cTo as chara
     hb_default(@cResponse,"")
 
     if ((lSanitizeData).and.!Empty(cResponse))
-        oTDeepSeek:=TDeepSeek():New()
         hb_JSONDecode(cResponse,@hNews)
         begin sequence
+            oTApiAI:=TApiAI():New()
             if ((valType(hNews)!="H").or.(!hb_HHasKey(hNews,"status")))
                 break
             endif
@@ -350,27 +367,42 @@ static function GetNews(lSanitizedata as logical,cFrom as character,cTo as chara
             if (!hb_HHasKey(hNews,"articles"))
                 break
             endif
-            cReponseUserBalance:=oTDeepSeek:GetUserBalance()
-            hb_JSONDecode(cReponseUserBalance,@hReponseUserBalance)
-            if (!((valType(hReponseUserBalance)=="H").and.(hb_HHasKey(hReponseUserBalance,"is_available")).and.(hReponseUserBalance["is_available"])))
-                oTDeepSeek:cUrl:=s_hIni["LMSTUDIO"]["URL"]
-                oTDeepSeek:cUrl+=":"
-                oTDeepSeek:cUrl+=hb_NToC(s_hIni["LMSTUDIO"]["PORT"])
-                oTDeepSeek:cUrl+=s_hIni["LMSTUDIO"]["PATH"]
-                oTDeepSeek:cModel:=s_hIni["LMSTUDIO"]["MODEL"]
-            endif
+            switch s_hIni["MAIN"]["SELECTED_AI"]
+            case "DEEPSEEK"
+                cReponseUserBalance:=oTApiAI:GetUserBalance()
+                hb_JSONDecode(cReponseUserBalance,@hReponseUserBalance)
+                if (!((valType(hReponseUserBalance)=="H").and.(hb_HHasKey(hReponseUserBalance,"is_available")).and.(hReponseUserBalance["is_available"])))
+                    oTApiAI:cUrl:=s_hIni["LMSTUDIO"]["URL"]
+                    oTApiAI:cUrl+=":"
+                    oTApiAI:cUrl+=hb_NToC(s_hIni["LMSTUDIO"]["PORT"])
+                    oTApiAI:cUrl+=s_hIni[s_hIni["LMSTUDIO"]["MODEL_DEEPSEEK"]]["PATH"]
+                    oTApiAI:cModel:=s_hIni[s_hIni["LMSTUDIO"]["MODEL_DEEPSEEK"]]["MODEL"]
+                endif
+                exit
+            case "QWEN"
+                if ((Empty(oTApiAI:cKey)).and.(empty(GetEnv("QWEN_API_KEY"))))
+                    oTApiAI:cUrl:=s_hIni["LMSTUDIO"]["URL"]
+                    oTApiAI:cUrl+=":"
+                    oTApiAI:cUrl+=hb_NToC(s_hIni["LMSTUDIO"]["PORT"])
+                    oTApiAI:cUrl+=s_hIni[s_hIni["LMSTUDIO"]["MODEL_QWEN"]]["PATH"]
+                    oTApiAI:cModel:=s_hIni[s_hIni["LMSTUDIO"]["MODEL_QWEN"]]["MODEL"]
+                endif
+                exit
+            otherwise
+                break
+            end switch
             aNewsTech:=Array(0)
             for each hArticle in hNews["articles"]
                 nArticle:=hArticle:__enumIndex()
                 hb_HSet(hArticle,"sourceIndex",nArticle)
                 #pragma __cstream|cPrompt:=%s
-Given individual JSON objects representing news articles in Portuguese,determine if each article is related to technology. Use the title to identify technology-related content,such as topics on computing,software,devices,or modern technologies. For each article,respond only with true if it is related to technology or false if it is not. Maintain the same evaluation criteria for all responses.:
+Given individual JSON objects representing news articles in Portuguese,determine if each article is related to technology. Use the title, or description, to identify technology-related content,such as topics on computing,software,devices,or modern technologies. For each article,respond only with true if it is related to technology or false if it is not. Maintain the same evaluation criteria for all responses.:
                 #pragma __endtext
-                cJSONArticle:=hb_JSONEncode(hArticle)
+                cJSONArticle:=hb_JSONEncode({"title"=>hArticle["title"],"description"=>hArticle["description"]})
                 cPrompt+=" ```json"+s_cEOL+cJSONArticle+s_cEOL+"```"
-                oTDeepSeek:Send(cPrompt)
-                cResponse:=oTDeepSeek:GetValue()
-                lNewsTech:=("true"==Right(cResponse,4))
+                oTApiAI:Send(cPrompt)
+                cResponseNew:=oTApiAI:GetValue()
+                lNewsTech:=("true"==Right(cResponseNew,4))
                 if (lNewsTech)
                     aAdd(aNewsTech,hArticle)
                 endif
@@ -381,7 +413,7 @@ Given individual JSON objects representing news articles in Portuguese,determine
                 hNews["articles"]:=aNewsTech
             endif
         end sequence
-        oTDeepSeek:End()
+        oTApiAI:End()
         hb_default(@lNewsTech,.F.)
         if (lNewsTech)
             cResponse:=hb_JSONEncode(hNews)
@@ -728,49 +760,74 @@ static function ExchangeCodeForToken(cAuthCode as character)
 
 // Based on https://api-docs.deepseek.com
 // Remember to register in https://deepseek.com/ and get your API key
-// class TDeepSeek for Harbour
+// class TApiAI for Harbour
 //----------------------------------------------------------------------------//
-class TDeepSeek
+class TApiAI
 
-    data cUrl as character
+    data cUrl as character init ""
     data cKey as character init ""
-    data cModel as character init "deepseek-r1"
-    data cResponse as character
+    data cModel as character init ""
+    data cApiAI as character init ""
+    data cResponse as character init ""
 
     data phCurl as pointer
 
     data nError as numeric init 0
     data nHttpCode as numeric init 0
 
-    method New(cKey as character,cModel as character)
+    method New(cApiAI as character,cKey as character,cModel as character)
     method Send(cPrompt as character)
     method End()
     method GetValue(cHKey as character)
+    
+    //DeepSeek Only
     method GetUserBalance()
 
 endclass
 //----------------------------------------------------------------------------//
-method New(cKey as character,cModel as character) class TDeepSeek
+method New(cApiAI as character,cKey as character,cModel as character) class TApiAI
+    
+    local cSELECTED_AI as character
+    
     ::phCurl:=curl_easy_init()
-    if (Empty(cKey))
-        ::cKey:=GetEnv("DEEPSEEK_API_KEY")
-    else
+    
+    cSELECTED_AI:=s_hIni["MAIN"]["SELECTED_AI"]
+    hb_default(@cApiAI,cSELECTED_AI)
+
+    switch cSELECTED_AI
+    case "DEEPSEEK"
+        hb_default(@cKey,GetEnv("DEEPSEEK_API_KEY"))
+        hb_default(@cModel,s_hIni["DEEPSEEK"]["MODEL"])
+        ::cUrl:=s_hIni["DEEPSEEK"]["URL"]
+        ::cUrl+=s_hIni["DEEPSEEK"]["PATH"]
+        exit
+    case "QWEN"
+        hb_default(@cKey,GetEnv("QWEN_API_KEY"))
+        hb_default(@cModel,s_hIni["QWEN"]["MODEL"])
+        ::cUrl:=s_hIni["QWEN"]["URL"]
+        ::cUrl+=s_hIni["QWEN"]["PATH"]
+        exit
+    end switch
+
+    if (!Empty(cApiAI))
+        ::cApiAI:=cApiAI
+    endif
+    
+    if (!Empty(cKey))
         ::cKey:=cKey
     endif
+    
     if (!Empty(cModel))
         ::cModel:=cModel
-    else
-        ::cModel:=s_hIni["DEEPSEEK"]["MODEL"]
     endif
-    ::cUrl:=s_hIni["DEEPSEEK"]["URL"]
-    ::cUrl+=s_hIni["DEEPSEEK"]["PATH"]
+
     return(self)
 //----------------------------------------------------------------------------//
-method End() class TDeepSeek
+method End() class TApiAI
     curl_easy_cleanup(::phCurl)
     return(nil)
 //----------------------------------------------------------------------------//
-method GetValue(cHKey as character) class TDeepSeek
+method GetValue(cHKey as character) class TApiAI
     local aKeys as array:=hb_AParams()
     local cKey as character
     local uValue:=hb_JSONDecode(::cResponse)
@@ -795,11 +852,11 @@ method GetValue(cHKey as character) class TDeepSeek
             endif
         next
     CATCH
-        //XBrowser(uValue)
+        //...
     END
     return(uValue)
 //----------------------------------------------------------------------------//
-method Send(cPrompt as character) class TDeepSeek
+method Send(cPrompt as character) class TApiAI
 
     local aHeaders as array
 
@@ -851,49 +908,60 @@ method Send(cPrompt as character) class TDeepSeek
 
     return(::cResponse)
 //----------------------------------------------------------------------------//
-method GetUserBalance() class TDeepSeek
+method GetUserBalance() class TApiAI
 
     local aHeaders as array
 
     local cURL as character
+    local cSELECTED_AI as character
 
     local phCurl as pointer
 
-    aHeaders:={"Content-Type: application/JSON","Authorization: Bearer "+::cKey}
+    cSELECTED_AI:=s_hIni["MAIN"]["SELECTED_AI"]
+    
+    if (cSELECTED_AI=="DEEPSEEK")
+    
+        aHeaders:={"Content-Type: application/JSON","Authorization: Bearer "+::cKey}
 
-    cURL:=s_hIni["DEEPSEEK"]["URLBALANCE"]
-    cURL+=s_hIni["DEEPSEEK"]["PATHBALANCE"]
+        cURL:=s_hIni["DEEPSEEK"]["URLBALANCE"]
+        cURL+=s_hIni["DEEPSEEK"]["PATHBALANCE"]
 
-    phCurl:=curl_easy_init()
+        phCurl:=curl_easy_init()
 
-    curl_easy_setopt(phCurl,HB_CURLOPT_URL,cURL)
-    curl_easy_setopt(phCurl,HB_CURLOPT_HTTPHEADER,aHeaders)
-    curl_easy_setopt(phCurl,HB_CURLOPT_USERNAME,'')
+        curl_easy_setopt(phCurl,HB_CURLOPT_URL,cURL)
+        curl_easy_setopt(phCurl,HB_CURLOPT_HTTPHEADER,aHeaders)
+        curl_easy_setopt(phCurl,HB_CURLOPT_USERNAME,'')
 
-    //Disabling the SSL peer verification (you can use it if you have no SSL certificate yet,but still want to test HTTPS)
-    curl_easy_setopt(phCurl,HB_CURLOPT_FOLLOWLOCATION,.T.)
-    curl_easy_setopt(phCurl,HB_CURLOPT_SSL_VERIFYPEER,.F.)
-    curl_easy_setopt(phCurl,HB_CURLOPT_SSL_VERIFYHOST,.F.)
+        //Disabling the SSL peer verification (you can use it if you have no SSL certificate yet,but still want to test HTTPS)
+        curl_easy_setopt(phCurl,HB_CURLOPT_FOLLOWLOCATION,.T.)
+        curl_easy_setopt(phCurl,HB_CURLOPT_SSL_VERIFYPEER,.F.)
+        curl_easy_setopt(phCurl,HB_CURLOPT_SSL_VERIFYHOST,.F.)
 
-    curl_easy_setopt(phCurl,HB_CURLOPT_NOPROGRESS,.F.)
-    curl_easy_setopt(phCurl,HB_CURLOPT_VERBOSE,.T.)
+        curl_easy_setopt(phCurl,HB_CURLOPT_NOPROGRESS,.F.)
+        curl_easy_setopt(phCurl,HB_CURLOPT_VERBOSE,.T.)
 
-    //Setting the buffer
-    curl_easy_setopt(phCurl,HB_CURLOPT_DL_BUFF_SETUP)
+        //Setting the buffer
+        curl_easy_setopt(phCurl,HB_CURLOPT_DL_BUFF_SETUP)
 
-    ::nError:=curl_easy_perform(phCurl)
-    if (::nError==HB_CURLE_OK)
-        curl_easy_getinfo(phCurl,HB_CURLINFO_RESPONSE_CODE,@::nHttpCode)
+        ::nError:=curl_easy_perform(phCurl)
         if (::nError==HB_CURLE_OK)
-            ::cResponse:=curl_easy_dl_buff_get(phCurl)
+            curl_easy_getinfo(phCurl,HB_CURLINFO_RESPONSE_CODE,@::nHttpCode)
+            if (::nError==HB_CURLE_OK)
+                ::cResponse:=curl_easy_dl_buff_get(phCurl)
+            else
+                ::cResponse:="Error code "+Str(::nError)
+            endif
         else
             ::cResponse:="Error code "+Str(::nError)
         endif
-    else
-        ::cResponse:="Error code "+Str(::nError)
-    endif
 
-    curl_easy_cleanup(phCurl)
+        curl_easy_cleanup(phCurl)
+    
+    else
+        
+        ::cResponse:=""
+    
+    endif
 
     return(::cResponse)
 
