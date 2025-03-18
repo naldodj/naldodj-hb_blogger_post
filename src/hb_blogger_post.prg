@@ -78,7 +78,7 @@ procedure Main(...)
 
     local idx as numeric
 
-    #ifdef __ALT_D__    // Compile with -b
+    #ifdef __ALT_D__    // Compile with -b -D__ALT_D__
         AltD(1)         // Enables the debugger. Press F5 to go.
         AltD()          // Invokes the debugger
     #endif
