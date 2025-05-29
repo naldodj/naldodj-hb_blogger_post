@@ -1094,6 +1094,8 @@ static procedure ShowHelp(cExtraMessage as character,aArgs as array)
     #include <windows.h>
     #include "hbapi.h"
 
+    #pragma warning(disable:4312)
+
     HB_FUNC_STATIC(SHELLEXECUTEEX)
     {
         SHELLEXECUTEINFO SHExecInfo;
