@@ -396,7 +396,7 @@ static function GetNews(lSanitizedata as logical,cFrom as character,cTo as chara
                 nArticle:=hArticle:__enumIndex()
                 hb_HSet(hArticle,"sourceIndex",nArticle)
                 #pragma __cstream|cPrompt:=%s
-Given individual JSON objects representing news articles in Portuguese,determine if each article is related to technology. Use the title, or description, to identify technology-related content,such as topics on computing,software,devices,or modern technologies. For each article,respond only with true if it is related to technology or false if it is not. Maintain the same evaluation criteria for all responses.:
+Given individual JSON objects representing news articles in Portuguese, determine if each article is related to technology. Use the title or description to identify technology-related content, such as topics on computing, software, devices, or modern technologies. Do not consider articles that are primarily advertisements, promotions, or product listings — including content about gadgets with a focus on sales or discounts. For each article, respond only with true if it is related to technology or false if it is not. Maintain the same evaluation criteria for all responses.:
                 #pragma __endtext
                 cJSONArticle:=hb_JSONEncode({"title"=>hArticle["title"],"description"=>hArticle["description"]})
                 cPrompt+=" ```json"+s_cEOL+cJSONArticle+s_cEOL+"```"
@@ -484,7 +484,7 @@ static function JSONToMarkdown(cJSON as character)
             cMarkdown+="**Publicado em:** "+hArticle["publishedAt"]+s_cEOL+s_cEOL
 
             // Imagem (se disponível)
-            if (!Empty(hArticle["urlToImage"]))
+            if (!Empty(hArticle["urlToImage"]).and.(.F.))
                 cMarkdown+="![Imagem]("+hArticle["urlToImage"]+")"+s_cEOL+s_cEOL
             endif
 
